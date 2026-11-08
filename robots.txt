@@ -1,3 +1,11 @@
 User-agent: *
 Allow: /
-Sitemap: https://example.com/sitemap.xml
+
+Disallow: /portal.html
+Disallow: /calculadora.html
+Disallow: /calculadora-solo.html
+Disallow: /seguimiento.html
+Disallow: /carrito.html
+Disallow: /favoritos.html
+
+Sitemap: https://levy147.github.io/DevGT-B2C-EcommerceV3/sitemap.xml

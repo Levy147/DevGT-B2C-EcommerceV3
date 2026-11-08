@@ -1,12 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://example.com/index.html</loc></url>
-  <url><loc>https://example.com/catalogo.html</loc></url>
-  <url><loc>https://example.com/Producto.html</loc></url>
-  <url><loc>https://example.com/carrito.html</loc></url>
-  <url><loc>https://example.com/favoritos.html</loc></url>
-  <url><loc>https://example.com/faq.html</loc></url>
-  <url><loc>https://example.com/politicas.html</loc></url>
-  <url><loc>https://example.com/terminos.html</loc></url>
-  <url><loc>https://example.com/privacidad.html</loc></url>
+  <url><loc>https://levy147.github.io/DevGT-B2C-EcommerceV3/index.html</loc></url>
+  <url><loc>https://levy147.github.io/DevGT-B2C-EcommerceV3/catalogo.html</loc></url>
+  <url><loc>https://levy147.github.io/DevGT-B2C-EcommerceV3/faq.html</loc></url>
+  <url><loc>https://levy147.github.io/DevGT-B2C-EcommerceV3/politicas.html</loc></url>
+  <url><loc>https://levy147.github.io/DevGT-B2C-EcommerceV3/terminos.html</loc></url>
+  <url><loc>https://levy147.github.io/DevGT-B2C-EcommerceV3/privacidad.html</loc></url>
 </urlset>
