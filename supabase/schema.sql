@@ -34,6 +34,7 @@ create table if not exists public.products (
   sizes text[] default '{}',
   colors text[] default '{}',
   image text default '',
+  images jsonb default '[]'::jsonb,
   tint int default 0,
   stock int default 0,
   active boolean default true,

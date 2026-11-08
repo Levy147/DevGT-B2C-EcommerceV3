@@ -6,7 +6,7 @@
   <meta name="robots" content="noindex, nofollow">
   <title>Lunette · Portal</title>
   <link rel="stylesheet" href="public/css/portal.css">
-  <link rel="icon" href="public/img/lunette/mascot.png" type="image/png">
+  <link rel="icon" href="public/img/lunette/favicon.png" type="image/png">
 </head>
 <body>
   <!-- Login -->
@@ -60,6 +60,34 @@
 
       <section class="portal-panel">
         <div class="portal-panel-head">
+          <h2>Pedidos</h2>
+          <div class="portal-actions">
+            <input id="orderSearchInput" type="search" placeholder="Buscar código, cliente o teléfono">
+            <select id="orderStatusFilter"></select>
+            <button id="refreshOrdersBtn" type="button" class="portal-btn ghost">Actualizar</button>
+          </div>
+        </div>
+
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead>
+              <tr>
+                <th>Código</th>
+                <th>Cliente</th>
+                <th>Total</th>
+                <th>Pago</th>
+                <th>Estado</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="ordersBody"></tbody>
+          </table>
+        </div>
+        <p id="ordersEmptyState" class="portal-empty" hidden>No hay pedidos todavía.</p>
+      </section>
+
+      <section class="portal-panel">
+        <div class="portal-panel-head">
           <h2>Productos</h2>
           <div class="portal-actions">
             <input id="searchInput" type="search" placeholder="Buscar nombre, SKU o categoría">
@@ -105,6 +133,59 @@
           <input id="catBlurb" placeholder="Descripción corta">
           <input id="catImage" placeholder="Imagen (URL)">
           <button type="submit" class="portal-btn primary">Agregar</button>
+        </form>
+      </section>
+
+      <section class="portal-panel" id="settingsPanel">
+        <div class="portal-panel-head">
+          <h2>Configuración de la tienda</h2>
+          <button id="saveSettingsBtn" type="submit" form="settingsForm" class="portal-btn primary">Guardar configuración</button>
+        </div>
+        <p class="portal-hint">
+          Estos valores reemplazan los de respaldo de <code>lunette-data.js</code>.
+          El costo de envío también lo usa <code>create_order</code> al validar el pedido.
+        </p>
+        <p id="settingsStatus" class="portal-hint" hidden></p>
+
+        <form id="settingsForm" class="portal-form portal-settings-form">
+          <div class="portal-grid">
+            <label>Costo de envío (GTQ)
+              <input id="setShippingFee" type="number" min="0" step="0.01" placeholder="25">
+            </label>
+            <label>Envío gratis desde (GTQ)
+              <input id="setFreeShippingFrom" type="number" min="0" step="0.01" placeholder="500">
+            </label>
+            <label>WhatsApp
+              <input id="setWhatsapp" placeholder="50255555555">
+            </label>
+            <label>Correo
+              <input id="setEmail" type="email" placeholder="correo@lunette.com">
+            </label>
+            <label>Instagram
+              <input id="setInstagram" placeholder="@lunette">
+            </label>
+            <label>URL de Instagram
+              <input id="setInstagramUrl" type="url" placeholder="https://instagram.com/lunette">
+            </label>
+            <label>TikTok
+              <input id="setTiktok" placeholder="@lunette">
+            </label>
+            <label>Horario
+              <input id="setHours" placeholder="Lun-Sáb: 10:00 - 19:00">
+            </label>
+            <label>Banco
+              <input id="setBankName" placeholder="Banco Industrial">
+            </label>
+            <label>Cuenta
+              <input id="setBankAccount" placeholder="000-000000-0">
+            </label>
+            <label>Titular
+              <input id="setBankHolder" placeholder="Nombre del titular">
+            </label>
+            <label>Nota de pago
+              <input id="setBankNote" placeholder="Ej. Enviar comprobante por WhatsApp">
+            </label>
+          </div>
         </form>
       </section>
     </main>
@@ -158,8 +239,11 @@
           <label>Tinte (0-360)
             <input id="fieldTint" type="number" min="0" max="360" value="0">
           </label>
-          <label class="portal-span-2">Imagen (URL)
-            <input id="fieldImage" placeholder="https://... o public/img/lunette/top.svg">
+          <label class="portal-span-2">Imagen principal (URL)
+            <input id="fieldImage" placeholder="https://... o link de Google Drive">
+          </label>
+          <label class="portal-span-2">Imágenes adicionales (una URL por línea)
+            <textarea id="fieldImages" rows="3" placeholder="Pega aquí links de Google Drive o URLs de imágenes"></textarea>
           </label>
           <label class="portal-span-2">Descripción
             <textarea id="fieldDescription" rows="3"></textarea>
@@ -188,6 +272,17 @@
           <button type="submit" class="portal-btn primary">Guardar producto</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Modal pedido -->
+  <div id="orderModal" class="portal-modal" hidden>
+    <div class="portal-modal-card">
+      <div class="portal-modal-head">
+        <h2 id="orderModalTitle">Pedido</h2>
+        <button id="closeOrderModal" type="button" class="portal-icon-btn" aria-label="Cerrar">×</button>
+      </div>
+      <div id="orderDetail"></div>
     </div>
   </div>
 

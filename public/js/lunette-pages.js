@@ -22,16 +22,19 @@ function lfRenderHome() {
     const picks = LUNETTE_PRODUCTS.filter(p => p.badge === 'best' || p.badge === 'new').slice(0, 3);
     hero.innerHTML = `
       <div class="hc-slides">
-        ${picks.map((product, index) => `
+        ${picks.map((product, index) => {
+          const image = lfProductImages(product)[0] || product.image;
+          return `
           <a href="${lunetteProductUrl(product)}" class="hc-slide ${index === 0 ? 'active' : ''}" data-index="${index}">
-            <img src="${product.image}" alt="${product.name}" style="${lfProductImageStyle(product)}">
+            <img src="${image}" alt="${product.name}" loading="lazy" decoding="async" style="${lfProductImageStyle(product)}">
             <div class="hc-overlay">
               <span class="hc-badge">${lunetteCategoryBySlug(product.category)?.name || product.category}</span>
               <h3 class="hc-name">${product.name}</h3>
               <p class="hc-price">${lfMoney(product.price)}</p>
             </div>
           </a>
-        `).join('')}
+        `;
+        }).join('')}
       </div>
       <div class="hc-dots">
         ${picks.map((_, index) => `<button class="hc-dot ${index === 0 ? 'active' : ''}" data-index="${index}" aria-label="Slide ${index + 1}"></button>`).join('')}
@@ -64,7 +67,7 @@ function lfRenderHome() {
   if (categories) {
     categories.innerHTML = LUNETTE_CATEGORIES.map(category => `
       <a href="catalogo.html?categoria=${category.slug}" class="card category-card">
-        <div class="lf-category-media"><img src="${category.image}" alt="${category.name}" loading="lazy"></div>
+        <div class="lf-category-media"><img src="${lfImageUrl(category.image)}" alt="${category.name}" loading="lazy" decoding="async"></div>
         <div class="category-card-footer">
           <h3>${category.emoji} ${category.name}</h3>
           <p>${category.blurb}</p>
@@ -76,6 +79,26 @@ function lfRenderHome() {
   const arrivals = document.getElementById('homeProducts');
   if (arrivals) {
     lfRenderGrid(arrivals, LUNETTE_PRODUCTS.slice(0, 8));
+  }
+
+  const contactText = document.getElementById('homeContactText');
+  const contactButtons = document.getElementById('homeContactButtons');
+  if (contactText && contactButtons) {
+    const waUrl = LUNETTE_STORE.whatsapp
+      ? lfWhatsAppUrl('¡Hola Lunette! Quiero información sobre sus productos 🎀')
+      : null;
+    const igUrl = LUNETTE_STORE.instagram && LUNETTE_STORE.instagramUrl
+      ? LUNETTE_STORE.instagramUrl
+      : null;
+
+    contactText.textContent = (waUrl || igUrl)
+      ? 'Escríbenos y te ayudamos a encontrar tu outfit ideal, o revisa las preguntas frecuentes.'
+      : 'Muy pronto podrás escribirnos por WhatsApp e Instagram. Mientras tanto, explora el catálogo y revisa las preguntas frecuentes.';
+
+    const extraButtons = [];
+    if (waUrl) extraButtons.push(`<a href="${waUrl}" class="btn btn-primary btn-lg" target="_blank" rel="noopener">WhatsApp</a>`);
+    if (igUrl) extraButtons.push(`<a href="${igUrl}" class="btn btn-secondary btn-lg" target="_blank" rel="noopener">${LUNETTE_STORE.instagram}</a>`);
+    contactButtons.insertAdjacentHTML('afterbegin', extraButtons.join(''));
   }
 }
 
@@ -304,6 +327,8 @@ function lfRenderProductDetail() {
   const category = lunetteCategoryBySlug(product.category);
   const badge = lunetteBadge(product);
   const favorite = lfIsFavorite(product.id);
+  const images = lfProductImages(product);
+  const mainImage = images[0] || product.image;
   const oldPrice = product.oldPrice
     ? `<span class="lf-detail-old">${lfMoney(product.oldPrice)}</span>`
     : '';
@@ -311,10 +336,15 @@ function lfRenderProductDetail() {
   host.innerHTML = `
     <div class="product-gallery">
       <div class="product-main-image">
-        <img src="${product.image}" alt="${product.name}" style="${lfProductImageStyle(product)}">
+        <img id="lfMainImage" src="${mainImage}" alt="${product.name}" decoding="async" style="${lfProductImageStyle(product)}">
       </div>
       <div class="product-thumbnails">
-        <div class="product-thumbnail active"><img src="${product.image}" alt="${product.name}" style="${lfProductImageStyle(product)}"></div>
+        ${images.map((image, index) => `
+          <button class="product-thumbnail ${index === 0 ? 'active' : ''}" type="button"
+                  data-lf-gallery="${image}" aria-label="Ver imagen ${index + 1}">
+            <img src="${image}" alt="${product.name} ${index + 1}" loading="lazy" decoding="async" style="${lfProductImageStyle(product)}">
+          </button>
+        `).join('')}
       </div>
     </div>
 
@@ -391,6 +421,15 @@ function lfRenderProductDetail() {
     });
   });
 
+  document.querySelectorAll('[data-lf-gallery]').forEach(button => {
+    button.addEventListener('click', () => {
+      const mainImageEl = document.getElementById('lfMainImage');
+      if (mainImageEl) mainImageEl.src = button.dataset.lfGallery;
+      document.querySelectorAll('[data-lf-gallery]').forEach(btn => btn.classList.remove('active'));
+      button.classList.add('active');
+    });
+  });
+
   document.getElementById('lfDetailAdd')?.addEventListener('click', () => {
     const size = document.querySelector('#lfSizeRow .lf-size-pill.active')?.dataset.size || product.sizes[0];
     lfAddToCart(product.id, size, quantity);
@@ -448,10 +487,11 @@ function lfRenderCartPage() {
           ${cart.map(line => {
             const product = lunetteProductById(line.id);
             if (!product) return '';
+            const image = lfProductImages(product)[0] || product.image;
             return `
               <div class="lf-cart-row">
                 <div class="lf-cart-product">
-                  <img src="${product.image}" alt="${product.name}" style="${lfProductImageStyle(product)}">
+                  <img src="${image}" alt="${product.name}" loading="lazy" decoding="async" style="${lfProductImageStyle(product)}">
                   <div>
                     <a href="${lunetteProductUrl(product)}">${product.name}</a>
                     <span>Talla ${line.size} · ${product.sku}</span>

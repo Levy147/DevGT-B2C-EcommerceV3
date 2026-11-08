@@ -13,6 +13,9 @@
     categories: [],
     products: [],
     orders: [],
+    ordersError: '',
+    settings: {},
+    settingsError: '',
     editingId: null,
     currentOrderId: null,
     filter: '',
@@ -92,6 +95,23 @@
     reembolsado: 'Reembolsado'
   };
 
+  const ORDER_TONE = {
+    pendiente: 'warning',
+    confirmado: 'info',
+    pedido_proveedor: 'info',
+    en_camino: 'info',
+    entregado: 'ok',
+    cancelado: 'danger'
+  };
+
+  const PAYMENT_TONE = {
+    pendiente: 'warning',
+    comprobante_enviado: 'info',
+    pagado: 'ok',
+    contra_entrega: 'info',
+    reembolsado: 'danger'
+  };
+
   /* ─── Vistas ─── */
 
   function showLogin() {
@@ -106,6 +126,9 @@
     state.products = [];
     state.categories = [];
     state.orders = [];
+    state.ordersError = '';
+    state.settings = {};
+    state.settingsError = '';
     state.currentOrderId = null;
   }
 
@@ -148,9 +171,15 @@
 
   async function loadAll() {
     setBusy(true);
-    const [categoriesResult, productsResult] = await Promise.all([
+    const [categoriesResult, productsResult, ordersResult, settingsResult] = await Promise.all([
       state.client.from('categories').select('*').order('sort_order', { ascending: true }),
-      state.client.from('products').select('*').order('id', { ascending: true })
+      state.client.from('products').select('*').order('id', { ascending: true }),
+      state.client
+        .from('orders')
+        .select('*, order_items(*), order_events(*)')
+        .order('created_at', { ascending: false })
+        .limit(200),
+      state.client.from('store_settings').select('key,value')
     ]);
     setBusy(false);
 
@@ -165,14 +194,44 @@
 
     state.categories = categoriesResult.data || [];
     state.products = productsResult.data || [];
+    state.orders = ordersResult.error ? [] : (ordersResult.data || []);
+    state.ordersError = ordersResult.error ? ordersResult.error.message : '';
+
+    state.settings = {};
+    state.settingsError = settingsResult.error ? settingsResult.error.message : '';
+    if (!settingsResult.error) {
+      (settingsResult.data || []).forEach(row => {
+        state.settings[row.key] = row.value;
+      });
+    }
+
     renderAll();
+  }
+
+  async function loadOrders() {
+    setBusy(true);
+    const { data, error } = await state.client
+      .from('orders')
+      .select('*, order_items(*), order_events(*)')
+      .order('created_at', { ascending: false })
+      .limit(200);
+    setBusy(false);
+
+    state.orders = error ? [] : (data || []);
+    state.ordersError = error ? error.message : '';
+    renderStats();
+    renderOrders();
+    message(error ? 'No se pudieron cargar los pedidos: ' + error.message : 'Pedidos actualizados.', error ? 'error' : 'ok');
   }
 
   function renderAll() {
     renderStats();
+    fillOrderStatusFilter();
     fillCategorySelects();
     renderTable();
     renderCategories();
+    renderOrders();
+    renderSettings();
   }
 
   function renderStats() {
@@ -180,12 +239,16 @@
     const active = state.products.filter(product => product.active).length;
     const categories = state.categories.length;
     const hidden = total - active;
+    const orders = state.orders.length;
+    const pendingOrders = state.orders.filter(order => order.status === 'pendiente').length;
 
     els.stats.innerHTML = [
       statCard(total, 'Productos'),
       statCard(active, 'Visibles'),
       statCard(hidden, 'Ocultos'),
-      statCard(categories, 'Categorías')
+      statCard(categories, 'Categorías'),
+      statCard(orders, 'Pedidos'),
+      statCard(pendingOrders, 'Pedidos pendientes')
     ].join('');
   }
 
@@ -243,7 +306,7 @@
   function productRow(product) {
     const category = categoryById(product.category_id);
     const thumb = product.image
-      ? '<img src="' + escapeHtml(product.image) + '" alt="">'
+      ? '<img src="' + escapeHtml(lfImageUrl(product.image)) + '" alt="">'
       : '<span>' + escapeHtml(String(product.name || '?').charAt(0)) + '</span>';
 
     return '<tr>' +
@@ -278,6 +341,354 @@
     ).join('');
   }
 
+  /* ─── Pedidos ─── */
+
+  function fillOrderStatusFilter() {
+    const value = state.orderStatusFilter;
+    els.orderStatusFilter.innerHTML = '<option value="">Todos los estados</option>' +
+      Object.entries(ORDER_STATUS).map(([key, label]) =>
+        '<option value="' + key + '">' + escapeHtml(label) + '</option>'
+      ).join('');
+    els.orderStatusFilter.value = value;
+  }
+
+  function filteredOrders() {
+    const search = state.orderFilter.trim().toLowerCase();
+    return state.orders.filter(order => {
+      const haystack = [
+        order.code,
+        order.customer_name,
+        order.customer_phone,
+        order.customer_email,
+        order.tracking_code
+      ].join(' ').toLowerCase();
+      const matchesSearch = !search || haystack.includes(search);
+      const matchesStatus = !state.orderStatusFilter || order.status === state.orderStatusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }
+
+  function statusChip(label, tone) {
+    return '<span class="portal-status is-' + (tone || 'info') + '">' + escapeHtml(label) + '</span>';
+  }
+
+  function formatDate(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (isNaN(date.getTime())) return '—';
+    return date.toLocaleDateString('es-GT', { day: '2-digit', month: 'short', year: 'numeric' });
+  }
+
+  function formatDateTime(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (isNaN(date.getTime())) return '—';
+    return date.toLocaleString('es-GT', {
+      day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+    });
+  }
+
+  function money(value) {
+    return 'Q ' + Number(value || 0).toFixed(2);
+  }
+
+  function renderOrders() {
+    if (state.ordersError) {
+      els.ordersBody.innerHTML = '<tr><td colspan="6" class="portal-empty">' +
+        'No se pudieron cargar los pedidos: ' + escapeHtml(state.ordersError) +
+        '</td></tr>';
+      els.ordersEmptyState.hidden = true;
+      return;
+    }
+
+    if (!state.orders.length) {
+      els.ordersBody.innerHTML = '';
+      els.ordersEmptyState.hidden = false;
+      return;
+    }
+
+    els.ordersEmptyState.hidden = true;
+    const orders = filteredOrders();
+    if (!orders.length) {
+      els.ordersBody.innerHTML = '<tr><td colspan="6" class="portal-empty">' +
+        'No hay pedidos que coincidan con el filtro.</td></tr>';
+    } else {
+      els.ordersBody.innerHTML = orders.map(orderRow).join('');
+    }
+  }
+
+  function orderRow(order) {
+    const orderLabel = ORDER_STATUS[order.status] || order.status || '—';
+    const paymentLabel = PAYMENT_STATUS[order.payment_status] || order.payment_status || '—';
+    return '<tr>' +
+      '<td><div class="portal-name">' + escapeHtml(order.code) + '</div>' +
+        '<div class="portal-sku">' + escapeHtml(formatDate(order.created_at)) + '</div></td>' +
+      '<td><div class="portal-name">' + escapeHtml(order.customer_name) + '</div>' +
+        '<div class="portal-sku">' + escapeHtml(order.customer_phone) + '</div></td>' +
+      '<td>' + escapeHtml(money(order.total)) + '</td>' +
+      '<td>' + statusChip(paymentLabel, PAYMENT_TONE[order.payment_status]) + '</td>' +
+      '<td>' + statusChip(orderLabel, ORDER_TONE[order.status]) + '</td>' +
+      '<td><div class="portal-row-actions">' +
+        '<button type="button" data-action="view-order" data-id="' + order.id + '">Ver detalle</button>' +
+      '</div></td>' +
+    '</tr>';
+  }
+
+  function orderStatusOptions(selected) {
+    return Object.entries(ORDER_STATUS).map(([key, label]) =>
+      '<option value="' + key + '"' + (selected === key ? ' selected' : '') + '>' +
+        escapeHtml(label) + '</option>'
+    ).join('');
+  }
+
+  function paymentStatusOptions(selected) {
+    return Object.entries(PAYMENT_STATUS).map(([key, label]) =>
+      '<option value="' + key + '"' + (selected === key ? ' selected' : '') + '>' +
+        escapeHtml(label) + '</option>'
+    ).join('');
+  }
+
+  function openOrderModal(order) {
+    if (!order) return;
+    state.currentOrderId = order.id;
+    els.orderModalTitle.textContent = 'Pedido ' + order.code;
+
+    const items = Array.isArray(order.order_items) ? order.order_items : [];
+    const events = Array.isArray(order.order_events) ? order.order_events.slice().reverse() : [];
+    const proof = order.payment_proof_path
+      ? '<button type="button" class="portal-btn ghost" data-action="view-proof" data-path="' +
+          escapeHtml(order.payment_proof_path) + '">Ver comprobante</button>'
+      : '<span class="portal-muted">Sin comprobante</span>';
+
+    const itemRows = items.length
+      ? items.map(item =>
+          '<tr>' +
+            '<td>' + escapeHtml(item.product_name) + '</td>' +
+            '<td>' + escapeHtml(item.size || '—') + '</td>' +
+            '<td>' + Number(item.qty || 0) + '</td>' +
+            '<td>' + escapeHtml(money(item.unit_price)) + '</td>' +
+            '<td>' + escapeHtml(money(item.line_total)) + '</td>' +
+          '</tr>'
+        ).join('')
+      : '<tr><td colspan="5" class="portal-muted">Sin productos registrados.</td></tr>';
+
+    const eventRows = events.length
+      ? events.map(event =>
+          '<li><strong>' + escapeHtml(ORDER_STATUS[event.status] || event.status || '—') + '</strong>' +
+            '<span>' + escapeHtml(formatDateTime(event.created_at)) + '</span>' +
+            (event.note ? '<p>' + escapeHtml(event.note) + '</p>' : '') +
+          '</li>'
+        ).join('')
+      : '<li class="portal-muted">Sin historial todavía.</li>';
+
+    els.orderDetail.innerHTML =
+      '<div class="portal-order-grid">' +
+        '<div class="portal-order-block">' +
+          '<h3>Cliente</h3>' +
+          '<dl class="portal-kv">' +
+            '<dt>Nombre</dt><dd>' + escapeHtml(order.customer_name) + '</dd>' +
+            '<dt>Teléfono</dt><dd><a href="tel:' + escapeHtml(order.customer_phone) + '">' + escapeHtml(order.customer_phone) + '</a></dd>' +
+            '<dt>Correo</dt><dd>' + escapeHtml(order.customer_email || '—') + '</dd>' +
+            '<dt>Ciudad</dt><dd>' + escapeHtml(order.customer_city) + '</dd>' +
+            '<dt>Dirección</dt><dd>' + escapeHtml(order.customer_address) + '</dd>' +
+          '</dl>' +
+          '<h3>Pago</h3>' +
+          '<dl class="portal-kv">' +
+            '<dt>Método</dt><dd>' + escapeHtml(order.payment_method || '—') + '</dd>' +
+            '<dt>Estado</dt><dd>' + statusChip(PAYMENT_STATUS[order.payment_status] || order.payment_status || '—', PAYMENT_TONE[order.payment_status]) + '</dd>' +
+            '<dt>Referencia</dt><dd>' + escapeHtml(order.payment_reference || '—') + '</dd>' +
+            '<dt>Comprobante</dt><dd>' + proof + '</dd>' +
+          '</dl>' +
+          (order.notes ? '<h3>Nota del cliente</h3><p class="portal-order-note">' + escapeHtml(order.notes) + '</p>' : '') +
+        '</div>' +
+        '<div class="portal-order-block">' +
+          '<h3>Resumen</h3>' +
+          '<dl class="portal-kv">' +
+            '<dt>Subtotal</dt><dd>' + escapeHtml(money(order.subtotal)) + '</dd>' +
+            '<dt>Envío</dt><dd>' + escapeHtml(money(order.shipping)) + '</dd>' +
+            '<dt>Total</dt><dd><strong>' + escapeHtml(money(order.total)) + '</strong></dd>' +
+            '<dt>Creado</dt><dd>' + escapeHtml(formatDateTime(order.created_at)) + '</dd>' +
+            '<dt>Actualizado</dt><dd>' + escapeHtml(formatDateTime(order.updated_at)) + '</dd>' +
+          '</dl>' +
+          '<h3>Actualizar pedido</h3>' +
+          '<form id="orderUpdateForm" class="portal-order-form" data-id="' + order.id + '">' +
+            '<label>Estado del pedido<select name="status">' + orderStatusOptions(order.status) + '</select></label>' +
+            '<label>Estado del pago<select name="payment_status">' + paymentStatusOptions(order.payment_status) + '</select></label>' +
+            '<label>Código de seguimiento<input name="tracking_code" value="' + escapeHtml(order.tracking_code || '') + '" placeholder="Ej. GT-123456"></label>' +
+            '<div class="portal-order-form-actions">' +
+              '<button type="submit" class="portal-btn primary">Guardar cambios</button>' +
+              '<button type="button" class="portal-btn ghost" data-action="copy-code" data-code="' + escapeHtml(order.code) + '">Copiar código</button>' +
+              '<a class="portal-btn ghost" href="seguimiento.html?code=' + encodeURIComponent(order.code) + '" target="_blank" rel="noopener">Ver seguimiento</a>' +
+            '</div>' +
+          '</form>' +
+        '</div>' +
+      '</div>' +
+      '<div class="portal-order-block">' +
+        '<h3>Productos</h3>' +
+        '<div class="portal-table-wrap">' +
+          '<table class="portal-order-items">' +
+            '<thead><tr><th>Producto</th><th>Talla</th><th>Cant.</th><th>Precio</th><th>Total</th></tr></thead>' +
+            '<tbody>' + itemRows + '</tbody>' +
+          '</table>' +
+        '</div>' +
+      '</div>' +
+      '<div class="portal-order-block">' +
+        '<h3>Historial</h3>' +
+        '<ol class="portal-order-events">' + eventRows + '</ol>' +
+      '</div>';
+
+    els.orderModal.hidden = false;
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeOrderModal() {
+    els.orderModal.hidden = true;
+    document.body.style.overflow = '';
+    state.currentOrderId = null;
+    els.orderDetail.innerHTML = '';
+  }
+
+  async function saveOrderChanges(event) {
+    event.preventDefault();
+    if (state.busy) return;
+
+    const form = event.target;
+    const id = form.dataset.id;
+    const status = form.elements.status.value;
+    const paymentStatus = form.elements.payment_status.value;
+    const trackingCode = form.elements.tracking_code.value.trim();
+
+    setBusy(true);
+    const { error } = await state.client
+      .from('orders')
+      .update({ status, payment_status: paymentStatus, tracking_code: trackingCode })
+      .eq('id', id);
+    setBusy(false);
+
+    if (error) {
+      message('No se pudo actualizar el pedido: ' + error.message, 'error');
+      return;
+    }
+
+    await loadOrders();
+    const updated = state.orders.find(order => String(order.id) === String(id));
+    if (updated) openOrderModal(updated);
+    else closeOrderModal();
+    message('Pedido actualizado correctamente.', 'ok');
+  }
+
+  async function viewProof(path) {
+    if (!path) return;
+    setBusy(true);
+    const { data, error } = await state.client.storage
+      .from('comprobantes')
+      .createSignedUrl(path, 600);
+    setBusy(false);
+
+    if (error) {
+      message('No se pudo abrir el comprobante: ' + error.message, 'error');
+      return;
+    }
+
+    window.open(data.signedUrl, '_blank', 'noopener');
+  }
+
+  async function copyCode(code) {
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code);
+      message('Código copiado: ' + code, 'ok');
+    } catch (error) {
+      window.prompt('Copia el código del pedido:', code);
+    }
+  }
+
+  /* ─── Configuración de la tienda ─── */
+
+  const SETTING_FIELDS = [
+    ['shipping_fee', 'setShippingFee'],
+    ['free_shipping_from', 'setFreeShippingFrom'],
+    ['whatsapp', 'setWhatsapp'],
+    ['email', 'setEmail'],
+    ['instagram', 'setInstagram'],
+    ['instagram_url', 'setInstagramUrl'],
+    ['tiktok', 'setTiktok'],
+    ['hours', 'setHours'],
+    ['bank_name', 'setBankName'],
+    ['bank_account', 'setBankAccount'],
+    ['bank_holder', 'setBankHolder'],
+    ['bank_note', 'setBankNote']
+  ];
+
+  function renderSettings() {
+    const settings = state.settings || {};
+    SETTING_FIELDS.forEach(([key, elementKey]) => {
+      const input = els[elementKey];
+      if (input) input.value = settings[key] == null ? '' : String(settings[key]);
+    });
+
+    if (state.settingsError) {
+      els.settingsStatus.textContent =
+        'No se pudo cargar la configuración: ' + state.settingsError +
+        ' Verifica que hayas ejecutado supabase/orders.sql o supabase/upgrade.sql.';
+      els.settingsStatus.hidden = false;
+    } else {
+      els.settingsStatus.hidden = true;
+      els.settingsStatus.textContent = '';
+    }
+  }
+
+  async function saveSettings(event) {
+    event.preventDefault();
+    if (state.busy) return;
+
+    const shipping = els.setShippingFee.value.trim();
+    const freeFrom = els.setFreeShippingFrom.value.trim();
+
+    if (shipping !== '' && (!Number.isFinite(Number(shipping)) || Number(shipping) < 0)) {
+      message('El costo de envío debe ser un número mayor o igual a 0.', 'error');
+      return;
+    }
+    if (freeFrom !== '' && (!Number.isFinite(Number(freeFrom)) || Number(freeFrom) < 0)) {
+      message('El monto para envío gratis debe ser un número mayor o igual a 0.', 'error');
+      return;
+    }
+
+    const values = {
+      shipping_fee: shipping,
+      free_shipping_from: freeFrom,
+      whatsapp: els.setWhatsapp.value.trim(),
+      email: els.setEmail.value.trim(),
+      instagram: els.setInstagram.value.trim(),
+      instagram_url: els.setInstagramUrl.value.trim(),
+      tiktok: els.setTiktok.value.trim(),
+      hours: els.setHours.value.trim(),
+      bank_name: els.setBankName.value.trim(),
+      bank_account: els.setBankAccount.value.trim(),
+      bank_holder: els.setBankHolder.value.trim(),
+      bank_note: els.setBankNote.value.trim()
+    };
+
+    const now = new Date().toISOString();
+    const rows = Object.entries(values).map(([key, value]) => ({ key, value, updated_at: now }));
+
+    setBusy(true);
+    const { error } = await state.client
+      .from('store_settings')
+      .upsert(rows, { onConflict: 'key' });
+    setBusy(false);
+
+    if (error) {
+      message('No se pudo guardar la configuración: ' + error.message, 'error');
+      return;
+    }
+
+    state.settings = values;
+    state.settingsError = '';
+    renderSettings();
+    message('Configuración guardada. La tienda la usará al recargar.', 'ok');
+  }
+
   /* ─── Formulario de producto ─── */
 
   function openProductForm(product) {
@@ -297,7 +708,10 @@
     els.fieldReviews.value = product ? (product.reviews || 0) : 0;
     els.fieldStock.value = product ? (product.stock || 0) : 0;
     els.fieldTint.value = product ? (product.tint || 0) : 0;
-    els.fieldImage.value = product ? (product.image || '') : '';
+    const productImages = product && Array.isArray(product.images) ? product.images : [];
+    const mainImage = product ? (product.image || productImages[0] || '') : '';
+    els.fieldImage.value = mainImage;
+    els.fieldImages.value = productImages.filter(url => url && url !== mainImage).join('\n');
     els.fieldDescription.value = product ? (product.description || '') : '';
     els.fieldDetails.value = product && Array.isArray(product.details) ? product.details.join('\n') : '';
     els.fieldSizes.value = product && Array.isArray(product.sizes) ? product.sizes.join(', ') : '';
@@ -319,7 +733,7 @@
   }
 
   function updatePreview() {
-    const source = els.fieldImage.value.trim();
+    const source = lfImageUrl(els.fieldImage.value.trim());
     if (source) {
       els.imagePreview.src = source;
       els.imagePreview.hidden = false;
@@ -333,6 +747,10 @@
     event.preventDefault();
     if (state.busy) return;
 
+    const mainImage = lfImageUrl(els.fieldImage.value.trim());
+    const extraImages = splitLines(els.fieldImages.value).map(lfImageUrl).filter(Boolean);
+    const images = [...new Set([mainImage, ...extraImages].filter(Boolean))];
+
     const payload = {
       name: els.fieldName.value.trim(),
       sku: els.fieldSku.value.trim() || null,
@@ -345,7 +763,8 @@
       reviews: Number(els.fieldReviews.value) || 0,
       stock: Number(els.fieldStock.value) || 0,
       tint: Number(els.fieldTint.value) || 0,
-      image: els.fieldImage.value.trim(),
+      image: images[0] || '',
+      images: images,
       description: els.fieldDescription.value.trim(),
       details: splitLines(els.fieldDetails.value),
       sizes: splitCommas(els.fieldSizes.value),
@@ -497,6 +916,7 @@
         sizes: product.sizes,
         colors: product.colors,
         image: product.image,
+        images: product.images && product.images.length ? product.images : [product.image],
         tint: product.tint,
         stock: 0,
         active: true
@@ -631,9 +1051,44 @@
     });
 
     els.importDemoBtn.addEventListener('click', importDemo);
+    els.settingsForm.addEventListener('submit', saveSettings);
+
+    els.orderSearchInput.addEventListener('input', () => {
+      state.orderFilter = els.orderSearchInput.value;
+      renderOrders();
+    });
+    els.orderStatusFilter.addEventListener('change', () => {
+      state.orderStatusFilter = els.orderStatusFilter.value;
+      renderOrders();
+    });
+    els.refreshOrdersBtn.addEventListener('click', loadOrders);
+    els.ordersBody.addEventListener('click', event => {
+      const button = event.target.closest('button[data-action="view-order"]');
+      if (!button) return;
+      const order = state.orders.find(item => String(item.id) === String(button.dataset.id));
+      if (order) openOrderModal(order);
+    });
+    els.closeOrderModal.addEventListener('click', closeOrderModal);
+    els.orderModal.addEventListener('click', event => {
+      if (event.target === els.orderModal) closeOrderModal();
+    });
+    els.orderDetail.addEventListener('submit', event => {
+      if (event.target.id === 'orderUpdateForm') saveOrderChanges(event);
+    });
+    els.orderDetail.addEventListener('click', event => {
+      const proofButton = event.target.closest('button[data-action="view-proof"]');
+      if (proofButton) {
+        viewProof(proofButton.dataset.path);
+        return;
+      }
+      const copyButton = event.target.closest('button[data-action="copy-code"]');
+      if (copyButton) copyCode(copyButton.dataset.code);
+    });
 
     document.addEventListener('keydown', event => {
-      if (event.key === 'Escape' && !els.productModal.hidden) closeProductForm();
+      if (event.key !== 'Escape') return;
+      if (!els.orderModal.hidden) closeOrderModal();
+      else if (!els.productModal.hidden) closeProductForm();
     });
   }
 
@@ -655,6 +1110,15 @@
       logoutBtn: document.getElementById('logoutBtn'),
       appMessage: document.getElementById('appMessage'),
       stats: document.getElementById('stats'),
+      orderSearchInput: document.getElementById('orderSearchInput'),
+      orderStatusFilter: document.getElementById('orderStatusFilter'),
+      refreshOrdersBtn: document.getElementById('refreshOrdersBtn'),
+      ordersBody: document.getElementById('ordersBody'),
+      ordersEmptyState: document.getElementById('ordersEmptyState'),
+      orderModal: document.getElementById('orderModal'),
+      orderModalTitle: document.getElementById('orderModalTitle'),
+      closeOrderModal: document.getElementById('closeOrderModal'),
+      orderDetail: document.getElementById('orderDetail'),
       searchInput: document.getElementById('searchInput'),
       categoryFilter: document.getElementById('categoryFilter'),
       newProductBtn: document.getElementById('newProductBtn'),
@@ -669,6 +1133,21 @@
       catEmoji: document.getElementById('catEmoji'),
       catBlurb: document.getElementById('catBlurb'),
       catImage: document.getElementById('catImage'),
+      settingsForm: document.getElementById('settingsForm'),
+      settingsStatus: document.getElementById('settingsStatus'),
+      saveSettingsBtn: document.getElementById('saveSettingsBtn'),
+      setShippingFee: document.getElementById('setShippingFee'),
+      setFreeShippingFrom: document.getElementById('setFreeShippingFrom'),
+      setWhatsapp: document.getElementById('setWhatsapp'),
+      setEmail: document.getElementById('setEmail'),
+      setInstagram: document.getElementById('setInstagram'),
+      setInstagramUrl: document.getElementById('setInstagramUrl'),
+      setTiktok: document.getElementById('setTiktok'),
+      setHours: document.getElementById('setHours'),
+      setBankName: document.getElementById('setBankName'),
+      setBankAccount: document.getElementById('setBankAccount'),
+      setBankHolder: document.getElementById('setBankHolder'),
+      setBankNote: document.getElementById('setBankNote'),
       productModal: document.getElementById('productModal'),
       modalTitle: document.getElementById('modalTitle'),
       closeModal: document.getElementById('closeModal'),
@@ -686,6 +1165,7 @@
       fieldStock: document.getElementById('fieldStock'),
       fieldTint: document.getElementById('fieldTint'),
       fieldImage: document.getElementById('fieldImage'),
+      fieldImages: document.getElementById('fieldImages'),
       fieldDescription: document.getElementById('fieldDescription'),
       fieldDetails: document.getElementById('fieldDetails'),
       fieldSizes: document.getElementById('fieldSizes'),

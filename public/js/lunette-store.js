@@ -206,6 +206,7 @@ function lfProductCard(product) {
   const badge = lunetteBadge(product);
   const fav = lfIsFavorite(product.id);
   const tint = Number(product.tint || 0);
+  const image = lfProductImages(product)[0] || product.image;
   const oldPrice = product.oldPrice
     ? `<span class="lf-old-price">${lfMoney(product.oldPrice)}</span>`
     : '';
@@ -214,7 +215,7 @@ function lfProductCard(product) {
     <article class="product-card">
       <div class="product-card-image">
         <a href="${lunetteProductUrl(product)}" class="lf-card-image-link" aria-label="Ver ${product.name}">
-          <img src="${product.image}" alt="${product.name}" loading="lazy" style="filter:hue-rotate(${tint}deg) saturate(1.08);">
+          <img src="${image}" alt="${product.name}" loading="lazy" decoding="async" style="filter:hue-rotate(${tint}deg) saturate(1.08);">
         </a>
         <button class="favorite-btn ${fav ? 'active' : ''}" type="button"
                 data-lf-fav="${product.id}" aria-label="${fav ? 'Quitar de favoritos' : 'Agregar a favoritos'}">
@@ -273,7 +274,7 @@ function lfNavHTML() {
           <a class="btn-icon ${page === 'favorites' ? 'lf-icon-active' : ''}" href="favoritos.html" title="Favoritos" aria-label="Favoritos">
             ♡<span class="lf-count" data-fav-count hidden>0</span>
           </a>
-          <a class="btn-icon ${page === 'account' ? 'lf-icon-active' : ''}" href="https://levy147.github.io/DevGT-B2C-EcommerceV3/portal.html" aria-label="Iniciar sesión" style="background:#f7a8c4;color:#fff;padding:6px 12px;border-radius:999px;font-size:.85rem;text-decoration:none;width:auto;height:auto;">Login</a>
+          <a class="btn-icon ${page === 'account' ? 'lf-icon-active' : ''}" href="portal.html" aria-label="Iniciar sesión" style="background:#f7a8c4;color:#fff;padding:6px 12px;border-radius:999px;font-size:.85rem;text-decoration:none;width:auto;height:auto;">Login</a>
           <button class="btn-icon ${page === 'cart' ? 'lf-icon-active' : ''}" type="button" data-open-cart title="Carrito" aria-label="Abrir carrito">
             <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
               <path d="M5.5 8.5h13l-1 11h-11l-1-11Z"/><path d="M9 8.5V7a3 3 0 0 1 6 0v1.5"/>
@@ -347,9 +348,10 @@ function lfDrawerHTML() {
 function lfCartLine(line) {
   const product = lunetteProductById(line.id);
   if (!product) return '';
+  const image = lfProductImages(product)[0] || product.image;
   return `
     <div class="lf-cart-line">
-      <img src="${product.image}" alt="${product.name}" style="filter:hue-rotate(${Number(product.tint || 0)}deg);">
+      <img src="${image}" alt="${product.name}" loading="lazy" decoding="async" style="filter:hue-rotate(${Number(product.tint || 0)}deg);">
       <div class="lf-cart-line-info">
         <a href="${lunetteProductUrl(product)}">${product.name}</a>
         <span>Talla ${line.size}</span>
@@ -510,6 +512,16 @@ function lfBindChrome() {
 
 async function lfInit() {
   lfInitPetals();
+  try {
+    if (typeof lfLoadStoreSettings === 'function') {
+      await Promise.race([
+        lfLoadStoreSettings(),
+        new Promise(resolve => window.setTimeout(resolve, 4000))
+      ]);
+    }
+  } catch (error) {
+    console.warn('No se pudo cargar la configuración de la tienda; se usan los valores locales.', error);
+  }
   lfChrome();
   try {
     if (typeof lfLoadRemoteCatalog === 'function') {

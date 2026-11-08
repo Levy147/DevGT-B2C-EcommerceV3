@@ -14,7 +14,8 @@ const LUNETTE_SUPABASE = {
 const LUNETTE_STORE = {
   name: 'Lunette',
   tagline: 'cute styles · y2k vibes',
-  // Contacto: aún no hay canales configurados. Descomentar cuando estén listos.
+  // Valores de respaldo. En producción se sobrescriben con la tabla
+  // store_settings de Supabase (envío, contacto y banco).
   // email: 'correo@lunette.com',
   // whatsapp: '50200000000', // formato internacional, sin signos ni espacios
   // instagram: '@lunette',
@@ -24,7 +25,14 @@ const LUNETTE_STORE = {
   shipping: 25,
   freeShippingFrom: 500,
   city: 'Guatemala',
-  currency: 'GTQ'
+  currency: 'GTQ',
+  // Datos bancarios de respaldo. Se configuran en store_settings.
+  bank: {
+    bank: '',      // Ej. Banco Industrial
+    account: '',   // Ej. 1234-56789-0
+    holder: '',    // Nombre del titular
+    note: ''       // Instrucción extra para el cliente
+  }
 };
 
 const LUNETTE_IMG = {
@@ -35,6 +43,52 @@ const LUNETTE_IMG = {
   bolsas: 'public/img/lunette/bolsa.svg',
   outfits: 'public/img/lunette/outfit.svg'
 };
+
+/* Convierte links de Google Drive a una URL directa usable en <img>.
+   El archivo debe estar compartido como "Cualquier persona con el enlace". */
+function lfDriveId(url) {
+  const value = String(url || '').trim();
+  if (!value) return '';
+  try {
+    const parsed = new URL(value);
+    const host = parsed.hostname.replace(/^www\./, '');
+    if (host === 'drive.google.com' || host === 'docs.google.com') {
+      const pathMatch = parsed.pathname.match(/\/d\/([^/]+)/);
+      if (pathMatch) return pathMatch[1];
+      return parsed.searchParams.get('id') || '';
+    }
+    if (host === 'lh3.googleusercontent.com') {
+      const pathMatch = parsed.pathname.match(/\/d\/([^/=]+)/);
+      if (pathMatch) return pathMatch[1];
+    }
+  } catch (error) {
+    return '';
+  }
+  return '';
+}
+
+function lfImageUrl(url) {
+  const value = String(url || '').trim();
+  if (!value) return '';
+  const driveId = lfDriveId(value);
+  if (driveId) return 'https://lh3.googleusercontent.com/d/' + driveId + '=w1600';
+  return value;
+}
+
+function lfProductImages(product) {
+  if (!product) return [];
+  const list = [];
+  if (Array.isArray(product.images)) list.push(...product.images);
+  if (product.image) list.push(product.image);
+  const seen = new Set();
+  return list
+    .map(lfImageUrl)
+    .filter(url => {
+      if (!url || seen.has(url)) return false;
+      seen.add(url);
+      return true;
+    });
+}
 
 let LUNETTE_CATEGORIES = [
   { slug: 'tops', name: 'Tops', emoji: '♡', blurb: 'Baby tees, encaje y mallas', image: LUNETTE_IMG.tops },
@@ -265,27 +319,78 @@ async function lfLoadRemoteCatalog() {
   }
 
   if (products.length) {
-    LUNETTE_PRODUCTS = products.map(product => ({
-      id: product.id,
-      sku: product.sku || ('LNT-' + product.id),
-      name: product.name,
-      category: product.categories ? product.categories.slug : '',
-      price: Number(product.price),
-      oldPrice: product.old_price != null ? Number(product.old_price) : undefined,
-      badge: product.badge || '',
-      rating: Number(product.rating || 0),
-      reviews: Number(product.reviews || 0),
-      image: product.image || LUNETTE_IMG[product.categories ? product.categories.slug : ''] || '',
-      tint: Number(product.tint || 0),
-      sizes: Array.isArray(product.sizes) && product.sizes.length ? product.sizes : ['Única'],
-      colors: Array.isArray(product.colors) && product.colors.length ? product.colors : ['Único'],
-      description: product.description || '',
-      details: Array.isArray(product.details) ? product.details : []
-    }));
+    LUNETTE_PRODUCTS = products.map(product => {
+      const categorySlug = product.categories ? product.categories.slug : '';
+      const fallbackImage = LUNETTE_IMG[categorySlug] || '';
+      const imageList = Array.isArray(product.images)
+        ? product.images.map(lfImageUrl).filter(Boolean)
+        : [];
+      if (product.image) imageList.unshift(lfImageUrl(product.image));
+      const images = [...new Set(imageList.filter(Boolean))];
+      const image = images[0] || fallbackImage;
+
+      return {
+        id: product.id,
+        sku: product.sku || ('LNT-' + product.id),
+        name: product.name,
+        category: categorySlug,
+        price: Number(product.price),
+        oldPrice: product.old_price != null ? Number(product.old_price) : undefined,
+        badge: product.badge || '',
+        rating: Number(product.rating || 0),
+        reviews: Number(product.reviews || 0),
+        image: image,
+        images: images.length ? images : (fallbackImage ? [fallbackImage] : []),
+        tint: Number(product.tint || 0),
+        sizes: Array.isArray(product.sizes) && product.sizes.length ? product.sizes : ['Única'],
+        colors: Array.isArray(product.colors) && product.colors.length ? product.colors : ['Único'],
+        description: product.description || '',
+        details: Array.isArray(product.details) ? product.details : []
+      };
+    });
 
     const remoteColors = LUNETTE_PRODUCTS.flatMap(product => product.colors);
     LUNETTE_COLORS = [...new Set(remoteColors)];
   }
+
+  return true;
+}
+
+/* Carga la configuración pública de la tienda (envío, contacto y banco)
+   desde la tabla store_settings. Si falla, se usan los valores locales. */
+async function lfLoadStoreSettings() {
+  const client = await lfGetSupabaseClient();
+  if (!client) return false;
+
+  const { data, error } = await client.from('store_settings').select('key, value');
+  if (error) throw error;
+
+  const settings = {};
+  (data || []).forEach(row => {
+    if (row && row.key) settings[row.key] = row.value == null ? '' : String(row.value);
+  });
+
+  const number = (key, fallback) => {
+    if (!(key in settings) || settings[key] === '') return fallback;
+    const parsed = Number(settings[key]);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+
+  LUNETTE_STORE.shipping = number('shipping_fee', LUNETTE_STORE.shipping);
+  LUNETTE_STORE.freeShippingFrom = number('free_shipping_from', LUNETTE_STORE.freeShippingFrom);
+
+  if (settings.whatsapp) LUNETTE_STORE.whatsapp = settings.whatsapp.replace(/\D/g, '');
+  if (settings.email) LUNETTE_STORE.email = settings.email;
+  if (settings.instagram) LUNETTE_STORE.instagram = settings.instagram;
+  if (settings.instagram_url) LUNETTE_STORE.instagramUrl = settings.instagram_url;
+  if (settings.tiktok) LUNETTE_STORE.tiktok = settings.tiktok;
+  if (settings.hours) LUNETTE_STORE.hours = settings.hours;
+
+  LUNETTE_STORE.bank = LUNETTE_STORE.bank || {};
+  if (settings.bank_name) LUNETTE_STORE.bank.bank = settings.bank_name;
+  if (settings.bank_account) LUNETTE_STORE.bank.account = settings.bank_account;
+  if (settings.bank_holder) LUNETTE_STORE.bank.holder = settings.bank_holder;
+  if (settings.bank_note) LUNETTE_STORE.bank.note = settings.bank_note;
 
   return true;
 }
