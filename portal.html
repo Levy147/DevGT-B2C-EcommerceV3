@@ -239,12 +239,26 @@
           <label>Tinte (0-360)
             <input id="fieldTint" type="number" min="0" max="360" value="0">
           </label>
-          <label class="portal-span-2">Imagen principal (URL)
-            <input id="fieldImage" placeholder="https://... o link de Google Drive">
-          </label>
-          <label class="portal-span-2">Imágenes adicionales (una URL por línea)
-            <textarea id="fieldImages" rows="3" placeholder="Pega aquí links de Google Drive o URLs de imágenes"></textarea>
-          </label>
+          <div class="portal-span-2 portal-uploader">
+            <label class="portal-upload-drop" for="fieldUploads">
+              <span class="portal-upload-icon">📷</span>
+              <strong>Subir fotos del producto</strong>
+              <small>Toca aquí y elige una o varias fotos. Se optimizan solas y la primera será la principal.</small>
+            </label>
+            <input id="fieldUploads" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" multiple hidden>
+            <p id="uploadStatus" class="portal-upload-status" hidden></p>
+            <div id="imageGallery" class="portal-gallery" hidden></div>
+
+            <details class="portal-upload-advanced">
+              <summary>Opciones avanzadas (pegar enlaces)</summary>
+              <label>Imagen principal (URL)
+                <input id="fieldImage" placeholder="https://... o link de Google Drive">
+              </label>
+              <label>Más imágenes (una URL por línea)
+                <textarea id="fieldImages" rows="3" placeholder="Pega aquí links de Google Drive o URLs de imágenes"></textarea>
+              </label>
+            </details>
+          </div>
           <label class="portal-span-2">Descripción
             <textarea id="fieldDescription" rows="3"></textarea>
           </label>

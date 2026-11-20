@@ -308,7 +308,7 @@ async function lfLoadRemoteCatalog() {
   const categories = categoriesResult.data || [];
   const products = productsResult.data || [];
 
-  if (categories.length) {
+  if (categories) {
     LUNETTE_CATEGORIES = categories.map(category => ({
       slug: category.slug,
       name: category.name,
@@ -318,7 +318,7 @@ async function lfLoadRemoteCatalog() {
     }));
   }
 
-  if (products.length) {
+  if (products) {
     LUNETTE_PRODUCTS = products.map(product => {
       const categorySlug = product.categories ? product.categories.slug : '';
       const fallbackImage = LUNETTE_IMG[categorySlug] || '';

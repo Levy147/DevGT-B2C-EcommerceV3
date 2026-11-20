@@ -6,6 +6,24 @@ function lfPageName() {
   return document.body.dataset.page || '';
 }
 
+function lfEscapeHtml(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function lfSafeUrl(value) {
+  try {
+    const url = new URL(String(value || '').trim());
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : '';
+  } catch (error) {
+    return '';
+  }
+}
+
 function lfStars(rating) {
   const full = Math.round(rating || 0);
   return '★★★★★'.slice(0, full) + '☆☆☆☆☆'.slice(0, 5 - full);
@@ -454,12 +472,38 @@ function lfRenderProductDetail() {
 }
 
 /* ─── Cart page ─── */
+let lfCheckoutDraft = null;
+
+function lfCaptureCheckoutDraft(host) {
+  const form = host.querySelector('#lfCheckoutForm');
+  if (!form) return;
+  const draft = {};
+  form.querySelectorAll('[name]').forEach(field => {
+    if (field.type === 'file') return;
+    draft[field.name] = field.type === 'checkbox' ? field.checked : field.value;
+  });
+  lfCheckoutDraft = draft;
+}
+
+function lfRestoreCheckoutDraft() {
+  if (!lfCheckoutDraft) return;
+  const form = document.getElementById('lfCheckoutForm');
+  if (!form) return;
+  Object.keys(lfCheckoutDraft).forEach(name => {
+    const field = form.elements[name];
+    if (!field) return;
+    if (field.type === 'checkbox') field.checked = Boolean(lfCheckoutDraft[name]);
+    else field.value = lfCheckoutDraft[name];
+  });
+}
+
 function lfRenderCartPage() {
   const host = document.getElementById('lfCartContent');
   if (!host) return;
   const cart = lfCart();
 
   if (!cart.length) {
+    lfCheckoutDraft = null;
     host.innerHTML = `
       <div class="catalog-empty" style="padding:60px 24px;">
         <div class="empty-icon">🛍</div>
@@ -470,6 +514,8 @@ function lfRenderCartPage() {
     `;
     return;
   }
+
+  lfCaptureCheckoutDraft(host);
 
   const subtotal = lfCartSubtotal();
   const shipping = lfShipping(subtotal);
@@ -494,7 +540,13 @@ function lfRenderCartPage() {
                   <img src="${image}" alt="${product.name}" loading="lazy" decoding="async" style="${lfProductImageStyle(product)}">
                   <div>
                     <a href="${lunetteProductUrl(product)}">${product.name}</a>
-                    <span>Talla ${line.size} · ${product.sku}</span>
+                    <label class="lf-size-inline">
+                      <span>Talla</span>
+                      <select data-lf-size="${line.key}" aria-label="Cambiar talla de ${product.name}">
+                        ${product.sizes.map(size => `<option value="${size}"${size === line.size ? ' selected' : ''}>${size}</option>`).join('')}
+                      </select>
+                    </label>
+                    <span class="lf-sku">${product.sku}</span>
                     <div class="lf-qty" style="margin-top:8px;">
                       <button type="button" data-lf-qty="-1" data-key="${line.key}" aria-label="Quitar uno">−</button>
                       <span>${line.qty}</span>
@@ -514,8 +566,13 @@ function lfRenderCartPage() {
 
         <div class="lf-checkout">
           <h3>Datos de entrega</h3>
-          <p>Completa tus datos para registrar tu pedido. Te contactaremos para coordinar el pago y la entrega.</p>
+          <p>Completa tus datos para registrar tu pedido. Te contactaremos para confirmar el pago; compramos tu pedido al proveedor al recibirlo.</p>
           <form id="lfCheckoutForm" novalidate>
+            <div class="lf-honeypot" aria-hidden="true">
+              <label>No completar este campo
+                <input type="text" name="company" tabindex="-1" autocomplete="off">
+              </label>
+            </div>
             <div class="lf-form-grid">
               <div class="form-group lf-full">
                 <label for="lfName">Nombre completo *</label>
@@ -541,8 +598,8 @@ function lfRenderCartPage() {
                 <label for="lfPayment">Método de pago *</label>
                 <select id="lfPayment" name="payment" required>
                   <option value="Transferencia bancaria">Transferencia bancaria</option>
-                  <option value="Pago contra entrega">Pago contra entrega</option>
                   <option value="Depósito">Depósito</option>
+                  <option value="Tarjeta (link de pago)">Tarjeta (link de pago)</option>
                 </select>
               </div>
               <div class="form-group" id="lfReferenceGroup">
@@ -564,7 +621,7 @@ function lfRenderCartPage() {
               <div class="lf-full">
                 <label class="lf-preorder" for="lfPreorder">
                   <input type="checkbox" id="lfPreorder" name="preorder" required>
-                  <span>Entiendo que este pedido es una <strong>preventa</strong> con entrega estimada de <strong>20 a 40 días hábiles</strong>. Acepto que no hay cambios por talla y que el reembolso solo aplica si el producto no llega o llega dañado.</span>
+                  <span>Entiendo que este pedido es una <strong>preventa</strong> con entrega estimada de <strong>8 a 30 días hábiles</strong>. El pedido se compra al proveedor al confirmar el pago. Acepto que no hay cambios por talla y que el reembolso solo aplica si el producto no llega o llega dañado.</span>
                 </label>
               </div>
               <div class="lf-full">
@@ -588,11 +645,15 @@ function lfRenderCartPage() {
              <p class="lf-free-note">Te faltan <strong>${lfMoney(missing)}</strong> para envío gratis.</p>`
           : `<p class="lf-free-note">¡Felicidades! Tienes envío gratis.</p>`}
         <div class="lf-summary-line"><span>Productos</span><strong>${lfCartCount()}</strong></div>
-        <p class="lf-free-note">Al confirmar registramos tu pedido y coordinamos el pago y la entrega contigo. Te contactaremos al teléfono que indiques.</p>
+        <p class="lf-free-note">Al confirmar registramos tu pedido y coordinamos el pago contigo. El pedido se compra al proveedor al confirmar el pago. Te contactaremos al teléfono que indiques.</p>
         <a href="catalogo.html" class="btn btn-secondary btn-block btn-sm">Seguir comprando</a>
       </aside>
     </div>
   `;
+
+  lfRestoreCheckoutDraft();
+  const formStartedAt = Date.now();
+  const idempotencyKey = lfMakeIdempotencyKey();
 
   const paymentSelect = document.getElementById('lfPayment');
   const paymentInfo = document.getElementById('lfPaymentInfo');
@@ -602,19 +663,20 @@ function lfRenderCartPage() {
 
   const updatePaymentInfo = () => {
     const method = paymentSelect.value;
-    const isCod = method === 'Pago contra entrega';
-    proofGroup.hidden = isCod;
-    referenceGroup.hidden = isCod;
-    if (isCod) {
-      paymentInfo.innerHTML = '<strong>Pago contra entrega:</strong> pagas al recibir tu pedido. Te llamaremos para confirmar la entrega.';
-      return;
-    }
-    const label = method === 'Depósito' ? 'depósito' : 'transferencia';
-    if (bank.account) {
-      paymentInfo.innerHTML = `<strong>Datos para ${label}:</strong><br>${bank.bank || ''} · ${bank.account}<br>Titular: ${bank.holder || '—'}<br>${bank.note || 'Envía tu comprobante al confirmar el pedido.'}`;
+    const isCard = method === 'Tarjeta (link de pago)';
+    proofGroup.hidden = isCard;
+    referenceGroup.hidden = isCard;
+    if (isCard) {
+      paymentInfo.innerHTML = '<strong>Pago con tarjeta:</strong> al confirmar tu pedido te enviamos por WhatsApp un link de pago de Recurrente por el total exacto. Compramos tu pedido al proveedor cuando el pago se acredita.';
     } else {
-      paymentInfo.innerHTML = `<strong>Pago por ${label}:</strong> al confirmar el pedido te enviaremos los datos bancarios para completar el pago.`;
+      const label = method === 'Depósito' ? 'depósito' : 'transferencia';
+      if (bank.account) {
+        paymentInfo.innerHTML = `<strong>Datos para ${label}:</strong><br>${bank.bank || ''} · ${bank.account}<br>Titular: ${bank.holder || '—'}<br>${bank.note || 'Envía tu comprobante al confirmar el pedido.'}`;
+      } else {
+        paymentInfo.innerHTML = `<strong>Pago por ${label}:</strong> al confirmar el pedido te enviaremos los datos bancarios para completar el pago.`;
+      }
     }
+    paymentInfo.innerHTML += '<br><small>El pago se realiza antes de comprar tu pedido al proveedor. Entrega estimada: 8 a 30 días hábiles.</small>';
   };
   paymentSelect?.addEventListener('change', updatePaymentInfo);
   updatePaymentInfo();
@@ -630,6 +692,12 @@ function lfRenderCartPage() {
     }
 
     const data = new FormData(form);
+    if (String(data.get('company') || '').trim()) return;
+    if (Date.now() - formStartedAt < 2500) {
+      errorBox.textContent = 'Espera un momento antes de confirmar tu pedido.';
+      errorBox.hidden = false;
+      return;
+    }
     const customer = {
       name: String(data.get('name') || '').trim(),
       phone: String(data.get('phone') || '').trim(),
@@ -671,6 +739,7 @@ function lfRenderCartPage() {
           payment_reference: customer.paymentReference,
           notes: customer.notes,
           preorder_accepted: true,
+          idempotency_key: idempotencyKey,
           items: cartItems.map(item => ({
             product_id: Number(item.id),
             size: item.size,
@@ -722,6 +791,7 @@ function lfRenderCartPage() {
       status: result?.status || 'pendiente'
     };
 
+    lfCheckoutDraft = null;
     lfSaveOrder(order);
     lfWrite(LF_CART_KEY, []);
     lfRefreshBadges();
@@ -729,14 +799,18 @@ function lfRenderCartPage() {
 
     const success = document.getElementById('lfOrderSuccess');
     const waUrl = lfWhatsAppUrl(lfOrderMessage(order));
+    const isCardPayment = customer.payment === 'Tarjeta (link de pago)';
     success.innerHTML = `
       <h3>¡Pedido registrado! 🎀</h3>
       <p>Guarda tu número de pedido:</p>
       <div class="lf-order-code">${order.code}</div>
-      <p>Te contactaremos para confirmar el pago y la entrega.</p>
-      <p class="lf-free-note">Preventa con entrega estimada de 20 a 40 días hábiles.</p>
+      <p>${isCardPayment
+        ? 'Te enviaremos por WhatsApp el link de pago de Recurrente para pagar con tarjeta. Al acreditarse el pago compramos tu pedido al proveedor.'
+        : 'Te contactaremos para confirmar el pago. Al confirmarlo compramos tu pedido al proveedor.'}</p>
+      <p class="lf-free-note">Preventa con entrega estimada de 8 a 30 días hábiles.</p>
       <div class="lf-success-actions">
         <a class="btn btn-primary" href="seguimiento.html?code=${encodeURIComponent(order.code)}">Seguir mi pedido</a>
+        <a class="btn btn-secondary" href="mis-pedidos.html">Mis pedidos</a>
         ${waUrl ? `<a class="btn btn-secondary" href="${waUrl}" target="_blank" rel="noopener">Enviar por WhatsApp</a>` : ''}
         <a class="btn btn-secondary" href="catalogo.html">Seguir comprando</a>
       </div>
@@ -771,14 +845,15 @@ function lfRenderFavorites() {
 const LF_ORDER_STATUS = {
   pendiente: { label: 'Pedido recibido', icon: '1', note: 'Recibimos tu pedido y estamos revisando los detalles.' },
   confirmado: { label: 'Confirmado', icon: '2', note: 'Confirmamos tu pedido y el pago.' },
-  pedido_proveedor: { label: 'Pedido al proveedor', icon: '3', note: 'Estamos comprando tu producto.' },
-  en_camino: { label: 'En camino', icon: '4', note: 'Tu pedido va en camino.' },
+  pedido_proveedor: { label: 'Pedido al proveedor', icon: '3', note: 'Compramos tu pedido al proveedor y estamos preparando el envío.' },
+  en_camino: { label: 'En camino', icon: '4', note: 'Tu pedido va en camino. Cuando tengamos la guía del courier la verás aquí.' },
   entregado: { label: 'Entregado', icon: '5', note: '¡Disfruta tu pedido!' },
   cancelado: { label: 'Cancelado', icon: '×', note: 'El pedido fue cancelado.' }
 };
 
 const LF_PAYMENT_STATUS = {
   pendiente: 'Pendiente de pago',
+  link_enviado: 'Link de pago enviado',
   comprobante_enviado: 'Comprobante recibido',
   pagado: 'Pagado',
   contra_entrega: 'Pago contra entrega',
@@ -813,20 +888,24 @@ function lfTrackingStatusHTML(status) {
 function lfTrackingResultHTML(order) {
   const status = LF_ORDER_STATUS[order.status] || LF_ORDER_STATUS.pendiente;
   const payment = LF_PAYMENT_STATUS[order.payment_status] || order.payment_status;
+  const trackingUrl = lfSafeUrl(order.tracking_url);
+  const paymentLink = lfSafeUrl(order.payment_link);
+  const showPaymentLink = Boolean(paymentLink) && !['pagado', 'reembolsado'].includes(order.payment_status);
+  const carrier = String(order.carrier || '').trim();
   const created = order.created_at
     ? new Date(order.created_at).toLocaleDateString('es-GT', { day: '2-digit', month: 'long', year: 'numeric' })
     : '—';
   const items = (order.items || []).map(item => `
     <div class="lf-track-item">
-      <span>${item.product_name}${item.size ? ` · Talla ${item.size}` : ''} × ${item.qty}</span>
+      <span>${lfEscapeHtml(item.product_name)}${item.size ? ` · Talla ${lfEscapeHtml(item.size)}` : ''} × ${item.qty}</span>
       <strong>${lfMoney(Number(item.line_total))}</strong>
     </div>
   `).join('');
   const events = (order.events || []).slice().reverse().map(event => `
     <li>
       <span>${event.created_at ? new Date(event.created_at).toLocaleString('es-GT') : ''}</span>
-      <strong>${(LF_ORDER_STATUS[event.status] || {}).label || event.status}</strong>
-      ${event.note ? `<p>${event.note}</p>` : ''}
+      <strong>${lfEscapeHtml((LF_ORDER_STATUS[event.status] || {}).label || event.status)}</strong>
+      ${event.note ? `<p>${lfEscapeHtml(event.note)}</p>` : ''}
     </li>
   `).join('');
 
@@ -835,7 +914,7 @@ function lfTrackingResultHTML(order) {
       <div class="lf-track-head">
         <div>
           <span class="lf-track-label">Pedido</span>
-          <h2>${order.code}</h2>
+          <h2>${lfEscapeHtml(order.code)}</h2>
           <p>Creado el ${created}</p>
         </div>
         <span class="lf-track-badge">${status.label}</span>
@@ -843,10 +922,21 @@ function lfTrackingResultHTML(order) {
 
       <div class="lf-track-meta">
         <div><span>Pago</span><strong>${payment}</strong></div>
-        <div><span>Método</span><strong>${order.payment_method || '—'}</strong></div>
-        ${order.tracking_code ? `<div><span>Guía</span><strong>${order.tracking_code}</strong></div>` : ''}
-        <div><span>Entrega</span><strong>${order.customer_city || '—'}</strong></div>
+        <div><span>Método</span><strong>${lfEscapeHtml(order.payment_method || '—')}</strong></div>
+        ${carrier ? `<div><span>Transportadora</span><strong>${lfEscapeHtml(carrier)}</strong></div>` : ''}
+        ${order.tracking_code ? `<div><span>Guía</span><strong>${lfEscapeHtml(order.tracking_code)}</strong></div>` : ''}
+        <div><span>Entrega</span><strong>${lfEscapeHtml(order.customer_city || '—')}</strong></div>
       </div>
+
+      ${trackingUrl ? `<div class="lf-track-guide">
+        <span>Rastrea tu paquete${carrier ? ' en ' + lfEscapeHtml(carrier) : ''}:</span>
+        <a class="btn btn-secondary btn-sm" href="${lfEscapeHtml(trackingUrl)}" target="_blank" rel="noopener">Ver guía</a>
+      </div>` : ''}
+
+      ${showPaymentLink ? `<div class="lf-track-guide">
+        <span>Tu pedido está pendiente de pago:</span>
+        <a class="btn btn-primary btn-sm" href="${lfEscapeHtml(paymentLink)}" target="_blank" rel="noopener">Pagar con tarjeta</a>
+      </div>` : ''}
 
       ${lfTrackingStatusHTML(order.status)}
 
@@ -866,7 +956,7 @@ function lfTrackingResultHTML(order) {
         </div>
       </div>
 
-      <p class="lf-track-note">¿Dudas con tu pedido? Escríbenos y comparte tu código <strong>${order.code}</strong>.</p>
+      <p class="lf-track-note">Entrega estimada: 8 a 30 días hábiles desde la confirmación del pago.<br>¿Dudas con tu pedido? Escríbenos y comparte tu código <strong>${lfEscapeHtml(order.code)}</strong>.</p>
     </div>
   `;
 }
@@ -925,6 +1015,129 @@ function lfRenderTracking() {
   if (code) lfLoadTracking(code);
 }
 
+/* ─── Mis pedidos (portal del cliente) ─── */
+function lfMyOrderCard(order) {
+  const status = LF_ORDER_STATUS[order.status] || LF_ORDER_STATUS.pendiente;
+  const date = order.date
+    ? new Date(order.date).toLocaleDateString('es-GT', { day: '2-digit', month: 'long', year: 'numeric' })
+    : '—';
+  const items = (order.items || []).map(item => `
+    <li>
+      <span>${item.name}${item.size ? ` · Talla ${item.size}` : ''} × ${item.qty}</span>
+      <strong>${lfMoney(item.price * item.qty)}</strong>
+    </li>
+  `).join('');
+
+  return `
+    <article class="lf-myorder" data-myorder="${order.code}">
+      <div class="lf-myorder-head">
+        <div>
+          <span class="lf-track-label">Pedido</span>
+          <h3>${order.code}</h3>
+          <p>${date}</p>
+        </div>
+        <span class="lf-myorder-badge" data-myorder-status>${status.label}</span>
+      </div>
+      <ul class="lf-myorder-items">${items}</ul>
+      <div class="lf-myorder-foot">
+        <div>
+          <span class="lf-myorder-total-label">Total</span>
+          <strong data-myorder-total>${lfMoney(order.total)}</strong>
+        </div>
+        <a class="btn btn-primary btn-sm" href="seguimiento.html?code=${encodeURIComponent(order.code)}">Ver detalle</a>
+      </div>
+      <p class="lf-myorder-live" data-myorder-live hidden></p>
+    </article>
+  `;
+}
+
+function lfApplyMyOrderStatus(card, data) {
+  const status = LF_ORDER_STATUS[data.status] || LF_ORDER_STATUS.pendiente;
+  const badge = card.querySelector('[data-myorder-status]');
+  if (badge) badge.textContent = status.label;
+
+  const totalEl = card.querySelector('[data-myorder-total]');
+  if (totalEl && data.total != null) totalEl.textContent = lfMoney(Number(data.total));
+
+  if (Array.isArray(data.items) && data.items.length) {
+    const itemsHost = card.querySelector('.lf-myorder-items');
+    if (itemsHost) {
+      itemsHost.innerHTML = data.items.map(item => `
+        <li>
+          <span>${item.product_name}${item.size ? ` · Talla ${item.size}` : ''} × ${item.qty}</span>
+          <strong>${lfMoney(Number(item.line_total))}</strong>
+        </li>
+      `).join('');
+    }
+  }
+
+  const payment = LF_PAYMENT_STATUS[data.payment_status] || data.payment_status;
+  const live = card.querySelector('[data-myorder-live]');
+  if (live) {
+    const events = data.events || [];
+    const last = events[events.length - 1];
+    const when = last && last.created_at ? new Date(last.created_at).toLocaleString('es-GT') : '';
+    live.textContent = `Pago: ${payment}${when ? ' · Actualizado: ' + when : ''}`;
+    live.hidden = false;
+  }
+}
+
+async function lfRenderMyOrders() {
+  const host = document.getElementById('lfMyOrders');
+  if (!host) return;
+
+  const orders = lfOrders();
+  const search = `
+    <form class="lf-myorders-search" id="lfMyOrdersSearch">
+      <label for="lfMyOrdersCode">¿Pediste desde otro dispositivo? Busca tu código</label>
+      <div class="lf-myorders-search-row">
+        <input type="text" id="lfMyOrdersCode" name="code" placeholder="LNT-XXXXXXXX" autocomplete="off" required>
+        <button class="btn btn-primary" type="submit">Buscar pedido</button>
+      </div>
+    </form>
+  `;
+  const empty = `
+    <div class="catalog-empty" style="padding:48px 24px;">
+      <div class="empty-icon">🛍</div>
+      <h3>Aquí verás tus pedidos</h3>
+      <p>Cuando confirmes una compra en este dispositivo aparecerá aquí. Si compraste en otro, busca tu código arriba.</p>
+      <a href="catalogo.html" class="btn btn-primary" style="margin-top:18px;">Ir al catálogo</a>
+    </div>
+  `;
+
+  host.innerHTML = search + `<div class="lf-myorders-list">
+    ${orders.length ? orders.map(lfMyOrderCard).join('') : empty}
+  </div>`;
+
+  document.getElementById('lfMyOrdersSearch')?.addEventListener('submit', event => {
+    event.preventDefault();
+    const value = String(new FormData(event.currentTarget).get('code') || '').trim().toUpperCase();
+    if (!value) return;
+    window.location.href = 'seguimiento.html?code=' + encodeURIComponent(value);
+  });
+
+  if (!orders.length) return;
+
+  let client = null;
+  try {
+    client = await lfGetSupabaseClient();
+  } catch (error) {
+    client = null;
+  }
+  if (!client) return;
+
+  await Promise.all(orders.map(async order => {
+    try {
+      const { data, error } = await client.rpc('track_order', { p_code: order.code });
+      if (error || !data) return;
+      const card = host.querySelector(`[data-myorder="${order.code}"]`);
+      if (card) lfApplyMyOrderStatus(card, data);
+    } catch (error) {
+      /* se mantiene el estado guardado localmente */
+    }
+  }));
+}
+
 /* ─── Init ─── */
 function lfRenderCurrentPage() {
   switch (lfPageName()) {
@@ -946,6 +1159,9 @@ function lfRenderCurrentPage() {
       break;
     case 'tracking':
       lfRenderTracking();
+      break;
+    case 'orders':
+      lfRenderMyOrders();
       break;
   }
 }

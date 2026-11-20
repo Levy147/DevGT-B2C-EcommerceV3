@@ -441,6 +441,89 @@ textarea { resize: vertical; }
 
 .portal-modal-actions { display: flex; justify-content: flex-end; gap: 10px; padding-top: 6px; }
 
+/* ── Subida de fotos de producto ── */
+.portal-uploader { display: grid; gap: 10px; }
+
+.portal-upload-drop {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 22px 16px;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-light);
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.portal-upload-drop:hover { border-color: var(--primary); background: #fff; }
+.portal-upload-icon { font-size: 1.7rem; line-height: 1; }
+.portal-upload-drop strong { font-size: 0.9rem; color: var(--primary-dark); }
+.portal-upload-drop small { font-size: 0.74rem; font-weight: 400; color: var(--text-muted); max-width: 340px; }
+
+.portal-upload-status {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  background: var(--bg-light);
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  padding: 8px 11px;
+}
+.portal-upload-status.error { color: #b91c1c; background: #fef2f2; border-color: #fecaca; }
+
+.portal-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 10px; }
+.portal-gallery-item {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border-light);
+  background: var(--bg-light);
+}
+.portal-gallery-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.portal-gallery-badge {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: rgba(190, 24, 93, 0.85);
+}
+.portal-gallery-item button {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(31, 41, 55, 0.72);
+  color: #fff;
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.portal-gallery-item button:hover { background: var(--danger); }
+
+.portal-upload-advanced { border-top: 1px dashed var(--border); padding-top: 10px; }
+.portal-upload-advanced summary { cursor: pointer; font-size: 0.78rem; color: var(--text-muted); }
+.portal-upload-advanced summary:hover { color: var(--primary-dark); }
+.portal-upload-advanced label {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
 @media (max-width: 640px) {
   .portal-topbar { padding: 12px 16px; }
   .portal-topbar-actions .portal-muted { display: none; }

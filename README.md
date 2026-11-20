@@ -16,13 +16,13 @@ Lunette es una tienda en línea construida con HTML, CSS y JavaScript puro. No r
 - Orden por precio, nombre o valoración.
 - Detalle de producto con galería de varias imágenes, selector de talla y cantidad.
 - Carrito lateral y página de carrito con resumen.
-- Checkout con datos de entrega, preventa y comprobante de pago opcional.
-- Seguimiento de pedido por código (`seguimiento.html`).
+- Checkout con datos de entrega, preventa Temu (8–30 días hábiles) y comprobante de pago opcional.
+- Seguimiento de pedido por código (`seguimiento.html`) con transportadora y enlace de guía.
 - Favoritos sin necesidad de crear cuenta.
 - Portal de administración (`portal.html`) con login Supabase, CRUD de productos
   y categorías, visibilidad, stock y configuración de la tienda.
 - Panel de pedidos con filtros, detalle, historial, cambio de estado/pago,
-  código de seguimiento y comprobante.
+  transportadora, código y enlace de guía, notas de seguimiento y comprobante.
 - Imágenes por producto usando URLs externas (incluye links de Google Drive).
 - Páginas de FAQ, envíos y cambios, términos y privacidad.
 - Diseño responsive con la paleta rosa/azul del tema boutique.
@@ -74,6 +74,13 @@ Ejecuta los scripts **en este orden** en Supabase → SQL Editor:
 3. `supabase/orders.sql` — pedidos, seguimiento, comprobantes y configuración.
 4. `supabase/upgrade.sql` — **solo si tu base ya existía** antes de esta versión
    (agrega `products.images` y la lectura pública de `store_settings`).
+5. `supabase/storage-products.sql` — bucket público `productos` para subir las
+   fotos desde el portal (lectura pública, escritura solo admin).
+6. `supabase/orders-v2.sql` — idempotencia, límite anti-spam por teléfono,
+   bitácora inmutable de eventos y límites al bucket `comprobantes`.
+7. `supabase/delivery-mode.sql` — modo preventa Temu (sin pago contra entrega),
+   columnas `carrier` y `tracking_url`, historial de guías, `track_order` v2 y
+   tabla privada `product_costs` para costos internos.
 
 La URL y la llave pública (`anon` / `publishable`) se configuran en
 `public/js/lunette-data.js`. **No uses la llave `service_role` en el navegador.**
@@ -126,22 +133,52 @@ En la primera sección del portal aparecen los últimos 200 pedidos. Puedes busc
 por código, cliente o teléfono, filtrar por estado y abrir el detalle para:
 
 - Ver datos del cliente, productos, totales e historial de estados.
-- Cambiar estado del pedido y del pago, y guardar el código de seguimiento.
+- Cambiar estado del pedido y del pago, y guardar transportadora, código y
+  enlace de guía (Forza, CPS u otro courier).
+- Agregar una nota manual al historial (por ejemplo, “En aduana” o una segunda
+  guía si Temu divide el pedido en varios paquetes).
 - Abrir el comprobante con una URL firmada (bucket privado `comprobantes`).
 - Copiar el código o abrir el seguimiento público.
 
-El cambio de estado queda registrado automáticamente en `order_events`.
+El cambio de estado, pago o guía queda registrado automáticamente en
+`order_events`.
+
+### Modo Temu
+
+La tienda trabaja como preventa: el cliente paga, se compra en Temu y el
+paquete llega directo a su dirección por un courier local.
+
+| Etapa real | Estado en el portal |
+|---|---|
+| Pedido pagado en Temu | `confirmado` |
+| Almacén prepara / recoge / empaca | `pedido_proveedor` |
+| Vuelo, aduana, bodega LATAM | `en_camino` + nota |
+| Forza / CPS en ruta | `en_camino` + transportadora y guía |
+| Entregado | `entregado` |
+
+Tiempo estimado: **8 a 30 días hábiles** (normalmente 2 a 4 semanas). Si Temu
+divide el pedido en varios paquetes, guarda la guía principal en los campos de
+envío y registra las demás con una **nota de historial**. El cliente ve la
+transportadora y el enlace de rastreo, no el proveedor.
 
 ---
 
 ## Imágenes de producto
 
-En el portal (`portal.html`) cada producto tiene:
+En el portal (`portal.html`) cada producto tiene un recuadro **“Subir fotos del
+producto”**: toca y elige una o varias fotos desde el celular o la computadora.
+Se suben a Supabase Storage (bucket público `productos`) y quedan listas; la
+primera foto es la principal. Puedes quitar cualquiera con la **×** sobre la
+miniatura.
 
-- **Imagen principal (URL)** — se usa en tarjetas, carrito y como primera foto.
-- **Imágenes adicionales** — una URL por línea; aparecen en la galería del detalle.
+Las fotos se **optimizan automáticamente** antes de subirlas: se reducen a un
+máximo de 1600 px y se convierten a WebP (~500 KB), así rinde mucho más el
+almacenamiento. Formatos: JPG, PNG, WEBP, GIF o AVIF, hasta 25 MB por foto
+original (los GIF se suben sin cambios para conservar la animación). Las fotos
+HEIC del iPhone deben convertirse a JPG.
 
-Puedes usar cualquier URL pública. Para **Google Drive**:
+Si prefieres, en **Opciones avanzadas** también puedes pegar URLs directamente.
+Para **Google Drive**:
 
 1. Sube la foto y compártela como "Cualquier persona con el enlace".
 2. Copia el link normal (`https://drive.google.com/file/d/.../view`).
@@ -154,16 +191,26 @@ en la imagen de la categoría.
 
 ## Pagos
 
-**No hay pasarela de pagos integrada.** El flujo actual es manual:
+**No se construye una pasarela propia.** Se usa un proveedor externo y el flujo
+es manual: el cliente paga primero y luego se compra el pedido al proveedor.
 
-- Transferencia bancaria, depósito o pago contra entrega.
-- El cliente puede subir un comprobante a Supabase Storage (bucket privado
-  `comprobantes`) o enviarlo después.
-- El pedido queda en estado `pendiente` hasta que un administrador lo confirme.
+- Transferencia bancaria o depósito: el cliente puede subir un comprobante al
+  bucket privado `comprobantes` de Supabase Storage o enviarlo después.
+- Tarjeta: el cliente elige **“Tarjeta (link de pago)”**. Al confirmar se le
+  indica que recibirá el link por WhatsApp. **No se ofrece pago contra entrega**
+  en modo Temu.
+- Para cobrar con tarjeta se usa **Recurrente** (Guatemala, 4.5% + Q2 en cuenta
+  comercial, links de pago, API y ACH). Crea el link en su dashboard por el total
+  exacto del pedido.
+- En el portal, abre el pedido y pega la URL en **Link de pago (Recurrente)**.
+  El estado pasa a `link_enviado` y el cliente ve un botón **“Pagar con tarjeta”**
+  en `seguimiento.html`. Usa **Copiar** para enviar el link por WhatsApp.
+- Cuando el pago se acredite, marca el pedido como `pagado` y continúa a
+  `confirmado` / `pedido_proveedor`.
 
-Para cobrar con tarjeta haría falta integrar un proveedor (Stripe, PayPal,
-Recurrente, etc.) con claves secretas y un backend/Edge Function; eso no se
-incluye en este repo estático.
+Más adelante se puede automatizar con una Edge Function y webhooks de Recurrente
+(crear el link y marcar `pagado` automáticamente). Nunca uses la llave
+`service_role` en el navegador.
 
 ---
 
@@ -178,3 +225,18 @@ incluye en este repo estático.
 
 Los pedidos se guardan en Supabase (`orders`, `order_items`, `order_events`) y
 también en local como respaldo. El seguimiento público se consulta por código.
+
+La página `mis-pedidos.html` muestra los pedidos guardados en el dispositivo y
+consulta su estado real en Supabase. Para pedidos hechos en otro dispositivo se
+busca por código (redirige a `seguimiento.html`).
+
+### Idempotencia y anti-spam
+
+- Cada confirmación de checkout envía un `idempotency_key`; si la misma
+  confirmación se reintenta, `create_order` devuelve el pedido existente en vez
+  de duplicarlo.
+- `create_order` limita a 3 pedidos por número de teléfono cada 10 minutos.
+- El formulario incluye un campo honeypot y un tiempo mínimo de espera.
+- `order_events` es una bitácora inmutable: solo se insertan eventos (los
+  triggers registran cambios de estado y de pago); el admin no puede editarlos
+  ni borrarlos.

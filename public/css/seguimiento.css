@@ -104,6 +104,20 @@
 }
 .lf-track-meta strong { font-size: .88rem; }
 
+.lf-track-guide {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border: 1px solid #fbcfe8;
+  border-radius: 10px;
+  background: #fdf2f8;
+  font-size: .85rem;
+  color: var(--text-secondary);
+}
+
 .lf-track-timeline {
   display: grid;
   gap: 0;

@@ -22,10 +22,20 @@
     categoryFilter: '',
     orderFilter: '',
     orderStatusFilter: '',
-    busy: false
+    busy: false,
+    uploading: false
   };
 
+  const PRODUCT_IMAGE_BUCKET = 'productos';
+  const MAX_SOURCE_BYTES = 25 * 1024 * 1024;
+  const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
+  const MAX_IMAGE_DIMENSION = 1600;
+  const IMAGE_QUALITY_STEPS = [0.82, 0.7, 0.6, 0.5];
+  const TARGET_IMAGE_BYTES = 500 * 1024;
+  const PRODUCT_IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif'];
+
   let els = {};
+  let uploadStatusTimer = null;
 
   /* ─── Utilidades ─── */
 
@@ -36,6 +46,15 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  function safeUrl(value) {
+    try {
+      const url = new URL(String(value || '').trim());
+      return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : '';
+    } catch (error) {
+      return '';
+    }
   }
 
   function slugify(text) {
@@ -89,6 +108,7 @@
 
   const PAYMENT_STATUS = {
     pendiente: 'Pendiente',
+    link_enviado: 'Link de pago enviado',
     comprobante_enviado: 'Comprobante recibido',
     pagado: 'Pagado',
     contra_entrega: 'Contra entrega',
@@ -106,6 +126,7 @@
 
   const PAYMENT_TONE = {
     pendiente: 'warning',
+    link_enviado: 'info',
     comprobante_enviado: 'info',
     pagado: 'ok',
     contra_entrega: 'info',
@@ -360,6 +381,7 @@
         order.customer_name,
         order.customer_phone,
         order.customer_email,
+        order.carrier,
         order.tracking_code
       ].join(' ').toLowerCase();
       const matchesSearch = !search || haystack.includes(search);
@@ -459,6 +481,8 @@
       ? '<button type="button" class="portal-btn ghost" data-action="view-proof" data-path="' +
           escapeHtml(order.payment_proof_path) + '">Ver comprobante</button>'
       : '<span class="portal-muted">Sin comprobante</span>';
+    const trackingUrl = safeUrl(order.tracking_url);
+    const paymentLink = safeUrl(order.payment_link);
 
     const itemRows = items.length
       ? items.map(item =>
@@ -496,12 +520,25 @@
           '<dl class="portal-kv">' +
             '<dt>Método</dt><dd>' + escapeHtml(order.payment_method || '—') + '</dd>' +
             '<dt>Estado</dt><dd>' + statusChip(PAYMENT_STATUS[order.payment_status] || order.payment_status || '—', PAYMENT_TONE[order.payment_status]) + '</dd>' +
+            '<dt>Link de pago</dt><dd>' + (paymentLink
+              ? '<a href="' + escapeHtml(paymentLink) + '" target="_blank" rel="noopener">Abrir link</a> ' +
+                '<button type="button" class="portal-btn ghost" data-action="copy-payment-link" data-link="' +
+                escapeHtml(paymentLink) + '">Copiar</button>'
+              : '—') + '</dd>' +
             '<dt>Referencia</dt><dd>' + escapeHtml(order.payment_reference || '—') + '</dd>' +
             '<dt>Comprobante</dt><dd>' + proof + '</dd>' +
           '</dl>' +
           (order.notes ? '<h3>Nota del cliente</h3><p class="portal-order-note">' + escapeHtml(order.notes) + '</p>' : '') +
         '</div>' +
         '<div class="portal-order-block">' +
+          '<h3>Envío</h3>' +
+          '<dl class="portal-kv">' +
+            '<dt>Transportadora</dt><dd>' + escapeHtml(order.carrier || '—') + '</dd>' +
+            '<dt>Guía</dt><dd>' + escapeHtml(order.tracking_code || '—') + '</dd>' +
+            '<dt>Rastreo</dt><dd>' + (trackingUrl
+              ? '<a href="' + escapeHtml(trackingUrl) + '" target="_blank" rel="noopener">Abrir enlace</a>'
+              : '—') + '</dd>' +
+          '</dl>' +
           '<h3>Resumen</h3>' +
           '<dl class="portal-kv">' +
             '<dt>Subtotal</dt><dd>' + escapeHtml(money(order.subtotal)) + '</dd>' +
@@ -514,7 +551,12 @@
           '<form id="orderUpdateForm" class="portal-order-form" data-id="' + order.id + '">' +
             '<label>Estado del pedido<select name="status">' + orderStatusOptions(order.status) + '</select></label>' +
             '<label>Estado del pago<select name="payment_status">' + paymentStatusOptions(order.payment_status) + '</select></label>' +
-            '<label>Código de seguimiento<input name="tracking_code" value="' + escapeHtml(order.tracking_code || '') + '" placeholder="Ej. GT-123456"></label>' +
+            '<label>Link de pago (Recurrente)<input name="payment_link" type="url" value="' + escapeHtml(order.payment_link || '') + '" placeholder="https://...">' +
+              '<small class="portal-muted">Crea el link por el total exacto y pégalo aquí. El cliente lo verá en su seguimiento.</small></label>' +
+            '<label>Transportadora<input name="carrier" value="' + escapeHtml(order.carrier || '') + '" placeholder="Forza Delivery Express / CPS Lastmile"></label>' +
+            '<label>Código de guía<input name="tracking_code" value="' + escapeHtml(order.tracking_code || '') + '" placeholder="Ej. FD42971984F"></label>' +
+            '<label>Enlace de rastreo<input name="tracking_url" type="url" value="' + escapeHtml(order.tracking_url || '') + '" placeholder="https://..."></label>' +
+            '<label>Nota para el historial<textarea name="tracking_note" rows="2" placeholder="Ej. En aduana / Paquete 2: CPS 947218629"></textarea></label>' +
             '<div class="portal-order-form-actions">' +
               '<button type="submit" class="portal-btn primary">Guardar cambios</button>' +
               '<button type="button" class="portal-btn ghost" data-action="copy-code" data-code="' + escapeHtml(order.code) + '">Copiar código</button>' +
@@ -556,20 +598,47 @@
     const id = form.dataset.id;
     const status = form.elements.status.value;
     const paymentStatus = form.elements.payment_status.value;
+    const paymentLink = form.elements.payment_link.value.trim();
+    const carrier = form.elements.carrier.value.trim();
     const trackingCode = form.elements.tracking_code.value.trim();
+    const trackingUrl = form.elements.tracking_url.value.trim();
+    const trackingNote = form.elements.tracking_note.value.trim();
+    const nextPaymentStatus = paymentLink && paymentStatus === 'pendiente'
+      ? 'link_enviado'
+      : paymentStatus;
 
     setBusy(true);
     const { error } = await state.client
       .from('orders')
-      .update({ status, payment_status: paymentStatus, tracking_code: trackingCode })
+      .update({
+        status,
+        payment_status: nextPaymentStatus,
+        payment_link: paymentLink,
+        carrier,
+        tracking_code: trackingCode,
+        tracking_url: trackingUrl
+      })
       .eq('id', id);
-    setBusy(false);
 
     if (error) {
+      setBusy(false);
       message('No se pudo actualizar el pedido: ' + error.message, 'error');
       return;
     }
 
+    if (trackingNote) {
+      const { error: noteError } = await state.client
+        .from('order_events')
+        .insert({ order_id: id, status, note: trackingNote });
+      if (noteError) {
+        setBusy(false);
+        message('Pedido actualizado, pero no se pudo guardar la nota: ' + noteError.message, 'error');
+        await loadOrders();
+        return;
+      }
+    }
+
+    setBusy(false);
     await loadOrders();
     const updated = state.orders.find(order => String(order.id) === String(id));
     if (updated) openOrderModal(updated);
@@ -600,6 +669,16 @@
       message('Código copiado: ' + code, 'ok');
     } catch (error) {
       window.prompt('Copia el código del pedido:', code);
+    }
+  }
+
+  async function copyPaymentLink(link) {
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      message('Link de pago copiado.', 'ok');
+    } catch (error) {
+      window.prompt('Copia el link de pago:', link);
     }
   }
 
@@ -720,6 +799,8 @@
     fillCategorySelects();
     els.fieldCategory.value = product && product.category_id ? String(product.category_id) : '';
     updatePreview();
+    renderGallery();
+    setUploadStatus('');
     els.productModal.hidden = false;
     document.body.style.overflow = 'hidden';
     setTimeout(() => els.fieldName.focus(), 40);
@@ -730,6 +811,10 @@
     document.body.style.overflow = '';
     state.editingId = null;
     els.productForm.reset();
+    setUploadStatus('');
+    els.fieldUploads.value = '';
+    renderGallery();
+    updatePreview();
   }
 
   function updatePreview() {
@@ -743,9 +828,244 @@
     }
   }
 
+  /* ─── Fotos del producto (Storage) ─── */
+
+  function setUploadStatus(text, isError) {
+    if (!els.uploadStatus) return;
+    els.uploadStatus.textContent = text || '';
+    els.uploadStatus.hidden = !text;
+    els.uploadStatus.classList.toggle('error', Boolean(isError));
+    if (uploadStatusTimer) {
+      window.clearTimeout(uploadStatusTimer);
+      uploadStatusTimer = null;
+    }
+  }
+
+  function isPlaceholderImage(url) {
+    return /(^|\/)public\/img\/lunette\/[^/]+\.svg$/i.test(String(url || '').trim());
+  }
+
+  function currentImageUrls() {
+    const urls = [];
+    const main = els.fieldImage.value.trim();
+    if (main) urls.push(main);
+    splitLines(els.fieldImages.value).forEach(url => {
+      if (!urls.includes(url)) urls.push(url);
+    });
+    return urls;
+  }
+
+  function renderGallery() {
+    if (!els.imageGallery) return;
+    const urls = currentImageUrls();
+    if (!urls.length) {
+      els.imageGallery.hidden = true;
+      els.imageGallery.innerHTML = '';
+      return;
+    }
+    els.imageGallery.hidden = false;
+    els.imageGallery.innerHTML = urls.map((url, index) =>
+      '<div class="portal-gallery-item">' +
+        '<img src="' + escapeHtml(lfImageUrl(url)) + '" alt="Foto ' + (index + 1) + '" loading="lazy">' +
+        (index === 0 ? '<span class="portal-gallery-badge">Principal</span>' : '') +
+        '<button type="button" data-action="remove-image" data-index="' + index + '" aria-label="Quitar foto">×</button>' +
+      '</div>'
+    ).join('');
+  }
+
+  function removeImageAt(index) {
+    const urls = currentImageUrls();
+    if (index < 0 || index >= urls.length) return;
+    urls.splice(index, 1);
+    els.fieldImage.value = urls[0] || '';
+    els.fieldImages.value = urls.slice(1).join('\n');
+    renderGallery();
+    updatePreview();
+  }
+
+  function productImageExt(file) {
+    const name = String(file.name || '');
+    const dot = name.lastIndexOf('.');
+    let ext = dot >= 0 ? name.slice(dot + 1).toLowerCase() : '';
+    if (ext === 'jpeg') ext = 'jpg';
+    if (ext) return ext;
+    const map = {
+      'image/jpeg': 'jpg',
+      'image/png': 'png',
+      'image/webp': 'webp',
+      'image/gif': 'gif',
+      'image/avif': 'avif'
+    };
+    return map[file.type] || '';
+  }
+
+  function loadImageSource(file) {
+    if (window.createImageBitmap) {
+      return window.createImageBitmap(file).catch(() => loadImageElement(file));
+    }
+    return loadImageElement(file);
+  }
+
+  function loadImageElement(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve(img);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('No se pudo leer la imagen'));
+      };
+      img.src = url;
+    });
+  }
+
+  function canvasToBlob(canvas, type, quality) {
+    return new Promise(resolve => canvas.toBlob(resolve, type, quality));
+  }
+
+  /* Reduce el peso de la foto en el navegador antes de subirla:
+     máximo 1600 px y calidad WebP, apuntando a ~500 KB. */
+  async function compressImage(file) {
+    if (file.type === 'image/gif') return file;
+
+    let source;
+    try {
+      source = await loadImageSource(file);
+    } catch (error) {
+      return file;
+    }
+
+    const width = source.width || source.naturalWidth || 0;
+    const height = source.height || source.naturalHeight || 0;
+    if (!width || !height) return file;
+
+    const scale = Math.min(1, MAX_IMAGE_DIMENSION / Math.max(width, height));
+    const targetWidth = Math.max(1, Math.round(width * scale));
+    const targetHeight = Math.max(1, Math.round(height * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    const context = canvas.getContext('2d');
+    if (!context) return file;
+
+    context.imageSmoothingQuality = 'high';
+    context.drawImage(source, 0, 0, targetWidth, targetHeight);
+    if (typeof source.close === 'function') source.close();
+
+    let best = null;
+    for (const quality of IMAGE_QUALITY_STEPS) {
+      let blob = await canvasToBlob(canvas, 'image/webp', quality);
+      if (!blob) blob = await canvasToBlob(canvas, 'image/jpeg', quality);
+      if (!blob) break;
+      if (!best || blob.size < best.size) best = blob;
+      if (blob.size <= TARGET_IMAGE_BYTES) {
+        best = blob;
+        break;
+      }
+    }
+
+    if (!best || best.size >= file.size) return file;
+
+    const extensionByType = { 'image/webp': 'webp', 'image/jpeg': 'jpg', 'image/png': 'png' };
+    const extension = extensionByType[best.type] || 'webp';
+    const baseName = String(file.name || 'foto').replace(/\.[^.]+$/, '');
+    return new File([best], baseName + '.' + extension, {
+      type: best.type,
+      lastModified: Date.now()
+    });
+  }
+
+  async function handleImageUploads(event) {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (!files.length || state.uploading) return;
+
+    if (!state.client) {
+      setUploadStatus('Inicia sesión para subir fotos.', true);
+      return;
+    }
+
+    state.uploading = true;
+    const skipped = [];
+    let uploaded = 0;
+
+    for (let index = 0; index < files.length; index++) {
+      const file = files[index];
+      const ext = productImageExt(file);
+      if (ext === 'heic' || ext === 'heif') {
+        skipped.push(file.name + ' (HEIC no compatible, usa JPG)');
+        continue;
+      }
+      if (!PRODUCT_IMAGE_EXTENSIONS.includes(ext)) {
+        skipped.push(file.name + ' (formato no compatible)');
+        continue;
+      }
+      if (file.size > MAX_SOURCE_BYTES) {
+        skipped.push(file.name + ' (más de 25 MB)');
+        continue;
+      }
+
+      setUploadStatus('Optimizando y subiendo ' + (index + 1) + ' de ' + files.length + '…');
+      try {
+        const prepared = await compressImage(file);
+        if (prepared.size > MAX_UPLOAD_BYTES) {
+          skipped.push(file.name + ' (supera el límite de 8 MB)');
+          continue;
+        }
+        const preparedExt = productImageExt(prepared);
+        const safeExt = preparedExt === 'jpeg' ? 'jpg' : preparedExt;
+        const path = 'products/' + Date.now() + '-' +
+          Math.random().toString(36).slice(2, 8) + '.' + safeExt;
+        const { error } = await state.client.storage
+          .from(PRODUCT_IMAGE_BUCKET)
+          .upload(path, prepared, {
+            cacheControl: '3600',
+            contentType: prepared.type || file.type || undefined,
+            upsert: false
+          });
+        if (error) throw error;
+
+        const { data } = state.client.storage
+          .from(PRODUCT_IMAGE_BUCKET)
+          .getPublicUrl(path);
+
+        if (data && data.publicUrl) {
+          const currentMain = els.fieldImage.value.trim();
+          if (!currentMain || isPlaceholderImage(currentMain)) {
+            els.fieldImage.value = data.publicUrl;
+          } else {
+            const extras = splitLines(els.fieldImages.value);
+            extras.push(data.publicUrl);
+            els.fieldImages.value = extras.join('\n');
+          }
+          uploaded += 1;
+          renderGallery();
+          updatePreview();
+        }
+      } catch (error) {
+        skipped.push(file.name + ' (' + (error.message || 'error al subir') + ')');
+      }
+    }
+
+    state.uploading = false;
+
+    if (skipped.length) {
+      setUploadStatus('Algunas fotos no se subieron: ' + skipped.join(', '), true);
+    } else if (uploaded) {
+      setUploadStatus('¡Listo! ' + uploaded + ' foto' + (uploaded === 1 ? '' : 's') + ' agregada' + (uploaded === 1 ? '' : 's') + '.', false);
+      uploadStatusTimer = window.setTimeout(() => setUploadStatus(''), 5000);
+    } else {
+      setUploadStatus('No se subió ninguna foto.', true);
+    }
+  }
+
   async function saveProduct(event) {
     event.preventDefault();
-    if (state.busy) return;
+    if (state.busy || state.uploading) return;
 
     const mainImage = lfImageUrl(els.fieldImage.value.trim());
     const extraImages = splitLines(els.fieldImages.value).map(lfImageUrl).filter(Boolean);
@@ -1012,7 +1332,16 @@
     els.closeModal.addEventListener('click', closeProductForm);
     els.cancelModal.addEventListener('click', closeProductForm);
     els.productForm.addEventListener('submit', saveProduct);
-    els.fieldImage.addEventListener('input', updatePreview);
+    els.fieldImage.addEventListener('input', () => {
+      updatePreview();
+      renderGallery();
+    });
+    els.fieldImages.addEventListener('input', renderGallery);
+    els.fieldUploads.addEventListener('change', handleImageUploads);
+    els.imageGallery.addEventListener('click', event => {
+      const button = event.target.closest('button[data-action="remove-image"]');
+      if (button) removeImageAt(Number(button.dataset.index));
+    });
 
     els.searchInput.addEventListener('input', () => {
       state.filter = els.searchInput.value;
@@ -1082,7 +1411,12 @@
         return;
       }
       const copyButton = event.target.closest('button[data-action="copy-code"]');
-      if (copyButton) copyCode(copyButton.dataset.code);
+      if (copyButton) {
+        copyCode(copyButton.dataset.code);
+        return;
+      }
+      const copyLinkButton = event.target.closest('button[data-action="copy-payment-link"]');
+      if (copyLinkButton) copyPaymentLink(copyLinkButton.dataset.link);
     });
 
     document.addEventListener('keydown', event => {
@@ -1171,7 +1505,10 @@
       fieldSizes: document.getElementById('fieldSizes'),
       fieldColors: document.getElementById('fieldColors'),
       fieldActive: document.getElementById('fieldActive'),
-      imagePreview: document.getElementById('imagePreview')
+      imagePreview: document.getElementById('imagePreview'),
+      fieldUploads: document.getElementById('fieldUploads'),
+      uploadStatus: document.getElementById('uploadStatus'),
+      imageGallery: document.getElementById('imageGallery')
     };
 
     bindEvents();

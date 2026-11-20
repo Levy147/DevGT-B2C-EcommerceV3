@@ -642,3 +642,165 @@
   .lf-cart-row-total { display: flex; align-items: center; justify-content: space-between; }
   .lf-cart-row-total .lf-remove { margin-top: 0; }
 }
+
+/* ─── Elegir talla (modal) ─── */
+.lf-size-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .2s ease, visibility .2s ease;
+}
+.lf-size-modal.open { opacity: 1; visibility: visible; }
+.lf-size-modal-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(45, 20, 35, .45);
+  backdrop-filter: blur(2px);
+}
+.lf-size-modal-card {
+  position: relative;
+  width: min(420px, 100%);
+  background: #fff;
+  border-radius: 1.25rem;
+  padding: 28px 24px 22px;
+  box-shadow: 0 24px 60px rgba(80, 20, 50, .25);
+  transform: translateY(12px);
+  transition: transform .2s ease;
+}
+.lf-size-modal.open .lf-size-modal-card { transform: none; }
+.lf-size-modal-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: none;
+  border: 0;
+  font-size: 1.6rem;
+  line-height: 1;
+  cursor: pointer;
+  color: #9a6b7d;
+}
+.lf-size-modal-card h3 { margin: 4px 0 2px; font-size: 1.2rem; }
+.lf-size-modal-price { margin: 0 0 16px; color: var(--primary-dark, #b83d6d); font-weight: 600; }
+.lf-size-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+.lf-size-choice {
+  min-width: 58px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 1px solid #e8c7d5;
+  background: #fff;
+  color: #6b4a57;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .15s ease;
+}
+.lf-size-choice:hover {
+  border-color: var(--primary, #f7a8c4);
+  color: var(--primary-dark, #b83d6d);
+  transform: translateY(-1px);
+}
+.lf-size-modal-note { margin: 16px 0 0; font-size: .8rem; color: #9a7b87; }
+.lf-eyebrow { font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; color: #b98aa0; }
+
+/* ─── Anti-spam y talla en carrito ─── */
+.lf-honeypot {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+.lf-size-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: .78rem;
+  color: #8a6573;
+  margin-top: 2px;
+}
+.lf-size-inline select {
+  border: 1px solid #e8c7d5;
+  border-radius: 999px;
+  background: #fff;
+  padding: 3px 8px;
+  font-size: .78rem;
+  color: #6b4a57;
+  cursor: pointer;
+}
+.lf-sku { display: block; font-size: .74rem; color: #b09aa3; }
+
+/* ─── Mis pedidos (portal del cliente) ─── */
+.lf-myorders-search {
+  background: #fff;
+  border: 1px solid #f1dbe4;
+  border-radius: 1rem;
+  padding: 20px;
+  margin-bottom: 24px;
+  box-shadow: 0 8px 24px rgba(160, 80, 110, .06);
+}
+.lf-myorders-search label { display: block; font-weight: 600; margin-bottom: 10px; color: #6b4a57; }
+.lf-myorders-search-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.lf-myorders-search-row input {
+  flex: 1;
+  min-width: 200px;
+  padding: 11px 14px;
+  border: 1px solid #e8c7d5;
+  border-radius: .75rem;
+}
+.lf-myorders-list { display: grid; gap: 18px; }
+.lf-myorder {
+  background: #fff;
+  border: 1px solid #f1dbe4;
+  border-radius: 1rem;
+  padding: 20px 22px;
+  box-shadow: 0 8px 24px rgba(160, 80, 110, .06);
+}
+.lf-myorder-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.lf-myorder-head h3 { margin: 2px 0 4px; font-size: 1.15rem; letter-spacing: .02em; }
+.lf-myorder-head p { margin: 0; color: #9a7b87; font-size: .85rem; }
+.lf-myorder-badge {
+  background: #fde8f0;
+  color: #b83d6d;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: .78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.lf-myorder-items { list-style: none; margin: 16px 0; padding: 0; display: grid; gap: 8px; }
+.lf-myorder-items li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: .9rem;
+  color: #5f4651;
+  border-bottom: 1px dashed #f1dbe4;
+  padding-bottom: 8px;
+}
+.lf-myorder-items li:last-child { border-bottom: 0; padding-bottom: 0; }
+.lf-myorder-foot { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.lf-myorder-total-label {
+  display: block;
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: #b09aa3;
+}
+.lf-myorder-foot strong { font-size: 1.1rem; color: #3d2b32; }
+.lf-myorder-live {
+  margin: 14px 0 0;
+  padding-top: 12px;
+  border-top: 1px dashed #f1dbe4;
+  font-size: .8rem;
+  color: #8a6573;
+}
+.lf-track-label { font-size: .72rem; text-transform: uppercase; letter-spacing: .12em; color: #b98aa0; }
+@media (max-width: 600px) {
+  .lf-myorder { padding: 16px; }
+  .lf-myorder-head { flex-direction: column; }
+}

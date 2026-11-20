@@ -51,7 +51,7 @@ function lfOrders() {
 }
 
 function lfSaveOrder(order) {
-  const orders = lfOrders();
+  const orders = lfOrders().filter(item => item.code !== order.code);
   orders.unshift(order);
   lfWrite(LF_ORDERS_KEY, orders);
 }
@@ -119,6 +119,82 @@ function lfAddToCart(id, size, qty) {
   lfSaveCart(cart);
   lfToast(product.name + ' agregado al carrito', 'success');
   lfOpenCart();
+}
+
+function lfMakeIdempotencyKey() {
+  if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+    return window.crypto.randomUUID();
+  }
+  return 'idem-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+}
+
+function lfCloseSizePicker() {
+  document.getElementById('lfSizeModal')?.remove();
+  document.body.classList.remove('lf-no-scroll');
+}
+
+function lfOpenSizePicker(product, sizes, onSelect) {
+  lfCloseSizePicker();
+  const modal = document.createElement('div');
+  modal.className = 'lf-size-modal';
+  modal.id = 'lfSizeModal';
+  modal.innerHTML = `
+    <div class="lf-size-modal-overlay" data-size-close></div>
+    <div class="lf-size-modal-card" role="dialog" aria-modal="true" aria-label="Elegir talla">
+      <button class="lf-size-modal-close" type="button" data-size-close aria-label="Cerrar">×</button>
+      <span class="lf-eyebrow">Elige tu talla</span>
+      <h3>${product.name}</h3>
+      <p class="lf-size-modal-price">${lfMoney(product.price)}</p>
+      <div class="lf-size-grid">
+        ${sizes.map(size => `<button class="lf-size-choice" type="button" data-size-pick="${size}">${size}</button>`).join('')}
+      </div>
+      <p class="lf-size-modal-note">La talla queda guardada en tu carrito.</p>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  document.body.classList.add('lf-no-scroll');
+  window.requestAnimationFrame(() => modal.classList.add('open'));
+
+  modal.querySelectorAll('[data-size-close]').forEach(el => {
+    el.addEventListener('click', lfCloseSizePicker);
+  });
+  modal.querySelectorAll('[data-size-pick]').forEach(button => {
+    button.addEventListener('click', () => {
+      const size = button.dataset.sizePick;
+      lfCloseSizePicker();
+      onSelect(size);
+    });
+  });
+}
+
+function lfQuickAdd(id) {
+  const product = lunetteProductById(id);
+  if (!product) return;
+  const sizes = Array.isArray(product.sizes) && product.sizes.length ? product.sizes : ['Única'];
+  if (sizes.length === 1) {
+    lfAddToCart(product.id, sizes[0], 1);
+    return;
+  }
+  lfOpenSizePicker(product, sizes, size => lfAddToCart(product.id, size, 1));
+}
+
+function lfChangeLineSize(key, newSize) {
+  const cart = lfCart();
+  const line = cart.find(item => item.key === key);
+  if (!line) return;
+  const product = lunetteProductById(line.id);
+  if (!product || !Array.isArray(product.sizes) || !product.sizes.includes(newSize)) return;
+  const oldIndex = cart.indexOf(line);
+  const targetKey = lfCartKey(line.id, newSize);
+  const existing = cart.find(item => item.key === targetKey && item.key !== key);
+  if (existing) {
+    existing.qty += line.qty;
+    cart.splice(oldIndex, 1);
+  } else {
+    line.size = newSize;
+    line.key = targetKey;
+  }
+  lfSaveCart(cart);
 }
 
 function lfUpdateQty(key, delta) {
@@ -267,6 +343,7 @@ function lfNavHTML() {
         <div class="navbar-links" id="navbarLinks">
           <a href="index.html" class="${page === 'home' ? 'active' : ''}">Inicio</a>
           <a href="catalogo.html" class="${isCatalog ? 'active' : ''}">Catálogo</a>
+          <a href="mis-pedidos.html" class="${page === 'orders' ? 'active' : ''}">Mis pedidos</a>
           <a href="index.html#como-comprar">Cómo comprar</a>
           <a href="index.html#contacto">Contacto</a>
         </div>
@@ -312,6 +389,7 @@ function lfFooterHTML() {
         </div>
         <div>
           <h4>Ayuda</h4>
+          <a href="mis-pedidos.html">Mis pedidos</a><br>
           <a href="faq.html">Preguntas frecuentes</a><br>
           <a href="index.html#como-comprar">Cómo comprar</a><br>
           <a href="politicas.html">Envíos y cambios</a><br>
@@ -506,7 +584,10 @@ function lfBindChrome() {
   });
 
   document.addEventListener('keydown', event => {
-    if (event.key === 'Escape') lfCloseCart();
+    if (event.key === 'Escape') {
+      lfCloseSizePicker();
+      lfCloseCart();
+    }
   });
 }
 
@@ -544,7 +625,7 @@ document.addEventListener('click', event => {
   const add = event.target.closest('[data-lf-add]');
   if (add) {
     event.preventDefault();
-    lfAddToCart(add.dataset.lfAdd);
+    lfQuickAdd(add.dataset.lfAdd);
     return;
   }
 
@@ -572,6 +653,12 @@ document.addEventListener('click', event => {
     event.preventDefault();
     lfCloseCart();
   }
+});
+
+document.addEventListener('change', event => {
+  const sizeSelect = event.target.closest('[data-lf-size]');
+  if (!sizeSelect) return;
+  lfChangeLineSize(sizeSelect.dataset.lfSize, sizeSelect.value);
 });
 
 document.addEventListener('lf:cart', lfRefreshCartUI);
