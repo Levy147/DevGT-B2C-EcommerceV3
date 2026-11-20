@@ -257,7 +257,7 @@ function lunetteCategoryBySlug(slug) {
 }
 
 function lunetteProductUrl(product) {
-  return 'Producto.html?id=' + product.id;
+  return 'Producto.html?id=' + encodeURIComponent(product.id);
 }
 
 function lunetteBadge(product) {

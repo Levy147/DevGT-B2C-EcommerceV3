@@ -143,10 +143,10 @@ function lfOpenSizePicker(product, sizes, onSelect) {
     <div class="lf-size-modal-card" role="dialog" aria-modal="true" aria-label="Elegir talla">
       <button class="lf-size-modal-close" type="button" data-size-close aria-label="Cerrar">×</button>
       <span class="lf-eyebrow">Elige tu talla</span>
-      <h3>${product.name}</h3>
+      <h3>${lfEscapeHtml(product.name)}</h3>
       <p class="lf-size-modal-price">${lfMoney(product.price)}</p>
       <div class="lf-size-grid">
-        ${sizes.map(size => `<button class="lf-size-choice" type="button" data-size-pick="${size}">${size}</button>`).join('')}
+        ${sizes.map(size => `<button class="lf-size-choice" type="button" data-size-pick="${lfEscapeHtml(size)}">${lfEscapeHtml(size)}</button>`).join('')}
       </div>
       <p class="lf-size-modal-note">La talla queda guardada en tu carrito.</p>
     </div>
@@ -290,19 +290,19 @@ function lfProductCard(product) {
   return `
     <article class="product-card">
       <div class="product-card-image">
-        <a href="${lunetteProductUrl(product)}" class="lf-card-image-link" aria-label="Ver ${product.name}">
-          <img src="${image}" alt="${product.name}" loading="lazy" decoding="async" style="filter:hue-rotate(${tint}deg) saturate(1.08);">
+        <a href="${lfEscapeHtml(lunetteProductUrl(product))}" class="lf-card-image-link" aria-label="Ver ${lfEscapeHtml(product.name)}">
+          <img src="${lfSafeMediaUrl(image)}" alt="${lfEscapeHtml(product.name)}" loading="lazy" decoding="async" style="filter:hue-rotate(${tint}deg) saturate(1.08);">
         </a>
         <button class="favorite-btn ${fav ? 'active' : ''}" type="button"
-                data-lf-fav="${product.id}" aria-label="${fav ? 'Quitar de favoritos' : 'Agregar a favoritos'}">
+                data-lf-fav="${lfEscapeHtml(product.id)}" aria-label="${fav ? 'Quitar de favoritos' : 'Agregar a favoritos'}">
           ${fav ? '♥' : '♡'}
         </button>
         ${badge ? `<span class="badge ${badge.className} status-badge">${badge.label}</span>` : ''}
       </div>
       <div class="product-card-body">
-        <h3><a href="${lunetteProductUrl(product)}">${product.name}</a></h3>
-        <div class="product-sku">${product.sku}</div>
-        <div class="category">${lunetteCategoryBySlug(product.category)?.name || product.category} · ${product.colors[0]}</div>
+        <h3><a href="${lfEscapeHtml(lunetteProductUrl(product))}">${lfEscapeHtml(product.name)}</a></h3>
+        <div class="product-sku">${lfEscapeHtml(product.sku)}</div>
+        <div class="category">${lfEscapeHtml(lunetteCategoryBySlug(product.category)?.name || product.category)} · ${lfEscapeHtml(product.colors[0])}</div>
         <div class="price-row">
           <div>
             <div class="price">${lfMoney(product.price)} ${oldPrice}</div>
@@ -311,7 +311,7 @@ function lfProductCard(product) {
           <div class="lf-rating">★ ${product.rating.toFixed(1)}</div>
         </div>
         <button class="btn btn-primary btn-sm btn-block lf-card-add" type="button"
-                data-lf-add="${product.id}">Agregar al carrito</button>
+                data-lf-add="${lfEscapeHtml(product.id)}">Agregar al carrito</button>
       </div>
     </article>
   `;
@@ -351,7 +351,6 @@ function lfNavHTML() {
           <a class="btn-icon ${page === 'favorites' ? 'lf-icon-active' : ''}" href="favoritos.html" title="Favoritos" aria-label="Favoritos">
             ♡<span class="lf-count" data-fav-count hidden>0</span>
           </a>
-          <a class="btn-icon ${page === 'account' ? 'lf-icon-active' : ''}" href="portal.html" aria-label="Iniciar sesión" style="background:#f7a8c4;color:#fff;padding:6px 12px;border-radius:999px;font-size:.85rem;text-decoration:none;width:auto;height:auto;">Login</a>
           <button class="btn-icon ${page === 'cart' ? 'lf-icon-active' : ''}" type="button" data-open-cart title="Carrito" aria-label="Abrir carrito">
             <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
               <path d="M5.5 8.5h13l-1 11h-11l-1-11Z"/><path d="M9 8.5V7a3 3 0 0 1 6 0v1.5"/>
@@ -366,11 +365,12 @@ function lfNavHTML() {
 
 function lfFooterHTML() {
   const contact = [];
-  if (LUNETTE_STORE.city) contact.push(`<p>◎ ${LUNETTE_STORE.city}, Guatemala</p>`);
-  if (LUNETTE_STORE.email) contact.push(`<p>✉ <a href="mailto:${LUNETTE_STORE.email}">${LUNETTE_STORE.email}</a></p>`);
-  if (LUNETTE_STORE.instagram && LUNETTE_STORE.instagramUrl) contact.push(`<p>♡ <a href="${LUNETTE_STORE.instagramUrl}" target="_blank" rel="noopener">${LUNETTE_STORE.instagram}</a></p>`);
-  if (LUNETTE_STORE.whatsapp) contact.push(`<p><a href="${lfWhatsAppUrl('¡Hola Lunette! Quiero información sobre sus productos 🎀')}" target="_blank" rel="noopener">Escríbenos por WhatsApp</a></p>`);
-  if (LUNETTE_STORE.hours) contact.push(`<p>◷ ${LUNETTE_STORE.hours}</p>`);
+  if (LUNETTE_STORE.city) contact.push(`<p>◎ ${lfEscapeHtml(LUNETTE_STORE.city)}, Guatemala</p>`);
+  if (LUNETTE_STORE.email) contact.push(`<p>✉ <a href="mailto:${encodeURIComponent(LUNETTE_STORE.email)}">${lfEscapeHtml(LUNETTE_STORE.email)}</a></p>`);
+  const igUrl = lfSafeUrl(LUNETTE_STORE.instagramUrl);
+  if (LUNETTE_STORE.instagram && igUrl) contact.push(`<p>♡ <a href="${lfEscapeHtml(igUrl)}" target="_blank" rel="noopener">${lfEscapeHtml(LUNETTE_STORE.instagram)}</a></p>`);
+  if (LUNETTE_STORE.whatsapp) contact.push(`<p><a href="${lfEscapeHtml(lfWhatsAppUrl('¡Hola Lunette! Quiero información sobre sus productos 🎀'))}" target="_blank" rel="noopener">Escríbenos por WhatsApp</a></p>`);
+  if (LUNETTE_STORE.hours) contact.push(`<p>◷ ${lfEscapeHtml(LUNETTE_STORE.hours)}</p>`);
   if (!contact.length) contact.push('<p>Muy pronto podrás escribirnos por WhatsApp e Instagram.</p>');
 
   return `
@@ -429,19 +429,19 @@ function lfCartLine(line) {
   const image = lfProductImages(product)[0] || product.image;
   return `
     <div class="lf-cart-line">
-      <img src="${image}" alt="${product.name}" loading="lazy" decoding="async" style="filter:hue-rotate(${Number(product.tint || 0)}deg);">
+      <img src="${lfSafeMediaUrl(image)}" alt="${lfEscapeHtml(product.name)}" loading="lazy" decoding="async" style="filter:hue-rotate(${Number(product.tint || 0)}deg);">
       <div class="lf-cart-line-info">
-        <a href="${lunetteProductUrl(product)}">${product.name}</a>
-        <span>Talla ${line.size}</span>
+        <a href="${lfEscapeHtml(lunetteProductUrl(product))}">${lfEscapeHtml(product.name)}</a>
+        <span>Talla ${lfEscapeHtml(line.size)}</span>
         <strong>${lfMoney(product.price)}</strong>
       </div>
       <div class="lf-cart-line-actions">
         <div class="lf-qty">
-          <button type="button" data-lf-qty="-1" data-key="${line.key}" aria-label="Quitar uno">−</button>
-          <span>${line.qty}</span>
-          <button type="button" data-lf-qty="1" data-key="${line.key}" aria-label="Agregar uno">+</button>
+          <button type="button" data-lf-qty="-1" data-key="${lfEscapeHtml(line.key)}" aria-label="Quitar uno">−</button>
+          <span>${Number(line.qty)}</span>
+          <button type="button" data-lf-qty="1" data-key="${lfEscapeHtml(line.key)}" aria-label="Agregar uno">+</button>
         </div>
-        <button class="lf-remove" type="button" data-lf-remove="${line.key}">Eliminar</button>
+        <button class="lf-remove" type="button" data-lf-remove="${lfEscapeHtml(line.key)}">Eliminar</button>
       </div>
     </div>
   `;

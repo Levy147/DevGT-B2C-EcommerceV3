@@ -11,12 +11,18 @@
 -- ------------------------------------------------------------
 insert into public.store_settings (key, value)
 values ('delivery_mode', 'preorder')
-on conflict (key) do update set value = 'preorder';
+on conflict (key) do nothing;
 
 alter table public.orders
   add column if not exists delivery_mode text not null default 'preorder';
 alter table public.orders
   alter column delivery_mode set default 'preorder';
+
+alter table public.orders
+  drop constraint if exists orders_payment_status_check;
+alter table public.orders
+  add constraint orders_payment_status_check
+  check (payment_status in ('pendiente', 'link_enviado', 'comprobante_enviado', 'pagado', 'contra_entrega', 'reembolsado'));
 
 -- ------------------------------------------------------------
 -- 1.1 Datos de la guía del courier local (Forza, CPS, etc.)
@@ -398,6 +404,33 @@ end;
 $$;
 
 grant execute on function public.track_order(text) to anon, authenticated;
+
+create or replace function public.attach_payment_proof(p_code text, p_path text, p_reference text default '')
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_id bigint;
+begin
+  if coalesce(trim(p_path), '') = '' or p_path not like ('orders/' || upper(trim(p_code)) || '/%') then
+    raise exception 'Ruta de comprobante inválida';
+  end if;
+
+  update public.orders
+  set payment_proof_path = p_path,
+      payment_reference = coalesce(nullif(trim(p_reference), ''), payment_reference),
+      payment_status = 'comprobante_enviado'
+  where upper(code) = upper(trim(p_code))
+    and payment_status not in ('pagado', 'reembolsado')
+  returning id into v_id;
+
+  return v_id is not null;
+end;
+$$;
+
+grant execute on function public.attach_payment_proof(text, text, text) to anon, authenticated;
 
 -- Refresca el esquema expuesto por PostgREST (columnas nuevas).
 notify pgrst, 'reload schema';

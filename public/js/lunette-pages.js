@@ -24,6 +24,15 @@ function lfSafeUrl(value) {
   }
 }
 
+function lfSafeMediaUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^data:image\/(png|jpe?g|gif|webp);base64,/i.test(raw)) return raw;
+  if (/^(https?:\/\/|\/\/)[^\s]+$/.test(raw)) return lfEscapeHtml(raw);
+  if (/^\/?(?:\.\.?\/)?[a-zA-Z0-9_][a-zA-Z0-9_./-]*(?:[?#][^\s]*)?$/.test(raw)) return lfEscapeHtml(raw);
+  return '';
+}
+
 function lfStars(rating) {
   const full = Math.round(rating || 0);
   return '★★★★★'.slice(0, full) + '☆☆☆☆☆'.slice(0, 5 - full);
@@ -43,11 +52,11 @@ function lfRenderHome() {
         ${picks.map((product, index) => {
           const image = lfProductImages(product)[0] || product.image;
           return `
-          <a href="${lunetteProductUrl(product)}" class="hc-slide ${index === 0 ? 'active' : ''}" data-index="${index}">
-            <img src="${image}" alt="${product.name}" loading="lazy" decoding="async" style="${lfProductImageStyle(product)}">
+          <a href="${lfEscapeHtml(lunetteProductUrl(product))}" class="hc-slide ${index === 0 ? 'active' : ''}" data-index="${index}">
+            <img src="${lfSafeMediaUrl(image)}" alt="${lfEscapeHtml(product.name)}" loading="lazy" decoding="async" style="${lfProductImageStyle(product)}">
             <div class="hc-overlay">
-              <span class="hc-badge">${lunetteCategoryBySlug(product.category)?.name || product.category}</span>
-              <h3 class="hc-name">${product.name}</h3>
+              <span class="hc-badge">${lfEscapeHtml(lunetteCategoryBySlug(product.category)?.name || product.category)}</span>
+              <h3 class="hc-name">${lfEscapeHtml(product.name)}</h3>
               <p class="hc-price">${lfMoney(product.price)}</p>
             </div>
           </a>
@@ -84,11 +93,11 @@ function lfRenderHome() {
   const categories = document.getElementById('homeCategories');
   if (categories) {
     categories.innerHTML = LUNETTE_CATEGORIES.map(category => `
-      <a href="catalogo.html?categoria=${category.slug}" class="card category-card">
-        <div class="lf-category-media"><img src="${lfImageUrl(category.image)}" alt="${category.name}" loading="lazy" decoding="async"></div>
+      <a href="catalogo.html?categoria=${encodeURIComponent(category.slug)}" class="card category-card">
+        <div class="lf-category-media"><img src="${lfSafeMediaUrl(lfImageUrl(category.image))}" alt="${lfEscapeHtml(category.name)}" loading="lazy" decoding="async"></div>
         <div class="category-card-footer">
-          <h3>${category.emoji} ${category.name}</h3>
-          <p>${category.blurb}</p>
+          <h3>${lfEscapeHtml(category.emoji)} ${lfEscapeHtml(category.name)}</h3>
+          <p>${lfEscapeHtml(category.blurb)}</p>
         </div>
       </a>
     `).join('');
@@ -114,8 +123,10 @@ function lfRenderHome() {
       : 'Muy pronto podrás escribirnos por WhatsApp e Instagram. Mientras tanto, explora el catálogo y revisa las preguntas frecuentes.';
 
     const extraButtons = [];
-    if (waUrl) extraButtons.push(`<a href="${waUrl}" class="btn btn-primary btn-lg" target="_blank" rel="noopener">WhatsApp</a>`);
-    if (igUrl) extraButtons.push(`<a href="${igUrl}" class="btn btn-secondary btn-lg" target="_blank" rel="noopener">${LUNETTE_STORE.instagram}</a>`);
+    const safeWaUrl = lfSafeUrl(waUrl);
+    const safeIgUrl = lfSafeUrl(igUrl);
+    if (safeWaUrl) extraButtons.push(`<a href="${lfEscapeHtml(safeWaUrl)}" class="btn btn-primary btn-lg" target="_blank" rel="noopener">WhatsApp</a>`);
+    if (safeIgUrl) extraButtons.push(`<a href="${lfEscapeHtml(safeIgUrl)}" class="btn btn-secondary btn-lg" target="_blank" rel="noopener">${lfEscapeHtml(LUNETTE_STORE.instagram)}</a>`);
     contactButtons.insertAdjacentHTML('afterbegin', extraButtons.join(''));
   }
 }
@@ -172,8 +183,8 @@ function lfBuildCatalogFilters() {
     categoryHost.innerHTML = `
       <button class="filter-category-btn ${!lfCatalogState.category ? 'active' : ''}" data-cat="">Todas</button>
       ${LUNETTE_CATEGORIES.map(category => `
-        <button class="filter-category-btn ${lfCatalogState.category === category.slug ? 'active' : ''}" data-cat="${category.slug}">
-          ${category.emoji} ${category.name}
+        <button class="filter-category-btn ${lfCatalogState.category === category.slug ? 'active' : ''}" data-cat="${lfEscapeHtml(category.slug)}">
+          ${lfEscapeHtml(category.emoji)} ${lfEscapeHtml(category.name)}
         </button>
       `).join('')}
     `;
@@ -189,7 +200,7 @@ function lfBuildCatalogFilters() {
     };
     colorHost.innerHTML = LUNETTE_COLORS.map(color => `
       <button class="color-swatch ${lfCatalogState.color === color ? 'active' : ''}"
-              data-color="${color}" title="${color}" aria-label="${color}"
+              data-color="${lfEscapeHtml(color)}" title="${lfEscapeHtml(color)}" aria-label="${lfEscapeHtml(color)}"
               style="background:${colorMap[color] || '#f9a8d4'};"></button>
     `).join('');
   }
@@ -354,22 +365,22 @@ function lfRenderProductDetail() {
   host.innerHTML = `
     <div class="product-gallery">
       <div class="product-main-image">
-        <img id="lfMainImage" src="${mainImage}" alt="${product.name}" decoding="async" style="${lfProductImageStyle(product)}">
+        <img id="lfMainImage" src="${lfSafeMediaUrl(mainImage)}" alt="${lfEscapeHtml(product.name)}" decoding="async" style="${lfProductImageStyle(product)}">
       </div>
       <div class="product-thumbnails">
         ${images.map((image, index) => `
           <button class="product-thumbnail ${index === 0 ? 'active' : ''}" type="button"
-                  data-lf-gallery="${image}" aria-label="Ver imagen ${index + 1}">
-            <img src="${image}" alt="${product.name} ${index + 1}" loading="lazy" decoding="async" style="${lfProductImageStyle(product)}">
+                  data-lf-gallery="${lfSafeMediaUrl(image)}" aria-label="Ver imagen ${index + 1}">
+            <img src="${lfSafeMediaUrl(image)}" alt="${lfEscapeHtml(product.name)} ${index + 1}" loading="lazy" decoding="async" style="${lfProductImageStyle(product)}">
           </button>
         `).join('')}
       </div>
     </div>
 
     <div class="product-info">
-      <div class="product-category">${category?.emoji || '♡'} ${category?.name || product.category}</div>
-      <h1>${product.name}</h1>
-      <div class="product-sku">${product.sku}</div>
+      <div class="product-category">${lfEscapeHtml(category?.emoji || '♡')} ${lfEscapeHtml(category?.name || product.category)}</div>
+      <h1>${lfEscapeHtml(product.name)}</h1>
+      <div class="product-sku">${lfEscapeHtml(product.sku)}</div>
       ${badge ? `<span class="badge ${badge.className}">${badge.label}</span>` : ''}
 
       <div class="lf-detail-rating">
@@ -383,17 +394,17 @@ function lfRenderProductDetail() {
       </div>
       <div class="product-price-sub">Precio en quetzales · Envío ${lfMoney(LUNETTE_STORE.shipping)}</div>
 
-      <p class="product-description">${product.description}</p>
+      <p class="product-description">${lfEscapeHtml(product.description)}</p>
 
       <div class="product-meta">
-        <span class="product-meta-item">✦ ${product.colors.join(' / ')}</span>
-        <span class="product-meta-item">♡ ${product.sizes.join(' · ')}</span>
+        <span class="product-meta-item">✦ ${lfEscapeHtml(product.colors.join(' / '))}</span>
+        <span class="product-meta-item">♡ ${lfEscapeHtml(product.sizes.join(' · '))}</span>
       </div>
 
       <div class="lf-option-label">Talla <span>${product.sizes.length > 1 ? 'Elige la tuya' : 'Talla única'}</span></div>
       <div class="lf-size-row" id="lfSizeRow">
         ${product.sizes.map((size, index) => `
-          <button class="lf-size-pill ${index === 0 ? 'active' : ''}" type="button" data-size="${size}">${size}</button>
+          <button class="lf-size-pill ${index === 0 ? 'active' : ''}" type="button" data-size="${lfEscapeHtml(size)}">${lfEscapeHtml(size)}</button>
         `).join('')}
       </div>
 
@@ -416,7 +427,7 @@ function lfRenderProductDetail() {
 
       <div class="lf-option-label" style="margin-top:24px;">Detalles</div>
       <ul class="lf-detail-list">
-        ${product.details.map(detail => `<li>${detail}</li>`).join('')}
+        ${product.details.map(detail => `<li>${lfEscapeHtml(detail)}</li>`).join('')}
       </ul>
     </div>
   `;
@@ -537,27 +548,27 @@ function lfRenderCartPage() {
             return `
               <div class="lf-cart-row">
                 <div class="lf-cart-product">
-                  <img src="${image}" alt="${product.name}" loading="lazy" decoding="async" style="${lfProductImageStyle(product)}">
+                  <img src="${lfSafeMediaUrl(image)}" alt="${lfEscapeHtml(product.name)}" loading="lazy" decoding="async" style="${lfProductImageStyle(product)}">
                   <div>
-                    <a href="${lunetteProductUrl(product)}">${product.name}</a>
+                    <a href="${lfEscapeHtml(lunetteProductUrl(product))}">${lfEscapeHtml(product.name)}</a>
                     <label class="lf-size-inline">
                       <span>Talla</span>
-                      <select data-lf-size="${line.key}" aria-label="Cambiar talla de ${product.name}">
-                        ${product.sizes.map(size => `<option value="${size}"${size === line.size ? ' selected' : ''}>${size}</option>`).join('')}
+                      <select data-lf-size="${lfEscapeHtml(line.key)}" aria-label="Cambiar talla de ${lfEscapeHtml(product.name)}">
+                        ${product.sizes.map(size => `<option value="${lfEscapeHtml(size)}"${size === line.size ? ' selected' : ''}>${lfEscapeHtml(size)}</option>`).join('')}
                       </select>
                     </label>
-                    <span class="lf-sku">${product.sku}</span>
+                    <span class="lf-sku">${lfEscapeHtml(product.sku)}</span>
                     <div class="lf-qty" style="margin-top:8px;">
-                      <button type="button" data-lf-qty="-1" data-key="${line.key}" aria-label="Quitar uno">−</button>
-                      <span>${line.qty}</span>
-                      <button type="button" data-lf-qty="1" data-key="${line.key}" aria-label="Agregar uno">+</button>
+                      <button type="button" data-lf-qty="-1" data-key="${lfEscapeHtml(line.key)}" aria-label="Quitar uno">−</button>
+                      <span>${Number(line.qty)}</span>
+                      <button type="button" data-lf-qty="1" data-key="${lfEscapeHtml(line.key)}" aria-label="Agregar uno">+</button>
                     </div>
                   </div>
                 </div>
                 <div class="lf-cart-row-price">${lfMoney(product.price)}</div>
                 <div class="lf-cart-row-total">
-                  ${lfMoney(product.price * line.qty)}
-                  <button class="lf-remove" type="button" data-lf-remove="${line.key}">Eliminar</button>
+                  ${lfMoney(product.price * Number(line.qty))}
+                  <button class="lf-remove" type="button" data-lf-remove="${lfEscapeHtml(line.key)}">Eliminar</button>
                 </div>
               </div>
             `;
@@ -671,7 +682,7 @@ function lfRenderCartPage() {
     } else {
       const label = method === 'Depósito' ? 'depósito' : 'transferencia';
       if (bank.account) {
-        paymentInfo.innerHTML = `<strong>Datos para ${label}:</strong><br>${bank.bank || ''} · ${bank.account}<br>Titular: ${bank.holder || '—'}<br>${bank.note || 'Envía tu comprobante al confirmar el pedido.'}`;
+        paymentInfo.innerHTML = `<strong>Datos para ${label}:</strong><br>${lfEscapeHtml(bank.bank || '')} · ${lfEscapeHtml(bank.account)}<br>Titular: ${lfEscapeHtml(bank.holder || '—')}<br>${lfEscapeHtml(bank.note || 'Envía tu comprobante al confirmar el pedido.')}`;
       } else {
         paymentInfo.innerHTML = `<strong>Pago por ${label}:</strong> al confirmar el pedido te enviaremos los datos bancarios para completar el pago.`;
       }
@@ -803,7 +814,7 @@ function lfRenderCartPage() {
     success.innerHTML = `
       <h3>¡Pedido registrado! 🎀</h3>
       <p>Guarda tu número de pedido:</p>
-      <div class="lf-order-code">${order.code}</div>
+      <div class="lf-order-code">${lfEscapeHtml(order.code)}</div>
       <p>${isCardPayment
         ? 'Te enviaremos por WhatsApp el link de pago de Recurrente para pagar con tarjeta. Al acreditarse el pago compramos tu pedido al proveedor.'
         : 'Te contactaremos para confirmar el pago. Al confirmarlo compramos tu pedido al proveedor.'}</p>
@@ -811,7 +822,7 @@ function lfRenderCartPage() {
       <div class="lf-success-actions">
         <a class="btn btn-primary" href="seguimiento.html?code=${encodeURIComponent(order.code)}">Seguir mi pedido</a>
         <a class="btn btn-secondary" href="mis-pedidos.html">Mis pedidos</a>
-        ${waUrl ? `<a class="btn btn-secondary" href="${waUrl}" target="_blank" rel="noopener">Enviar por WhatsApp</a>` : ''}
+        ${waUrl ? `<a class="btn btn-secondary" href="${lfEscapeHtml(waUrl)}" target="_blank" rel="noopener">Enviar por WhatsApp</a>` : ''}
         <a class="btn btn-secondary" href="catalogo.html">Seguir comprando</a>
       </div>
     `;
@@ -897,7 +908,7 @@ function lfTrackingResultHTML(order) {
     : '—';
   const items = (order.items || []).map(item => `
     <div class="lf-track-item">
-      <span>${lfEscapeHtml(item.product_name)}${item.size ? ` · Talla ${lfEscapeHtml(item.size)}` : ''} × ${item.qty}</span>
+      <span>${lfEscapeHtml(item.product_name)}${item.size ? ` · Talla ${lfEscapeHtml(item.size)}` : ''} × ${Number(item.qty)}</span>
       <strong>${lfMoney(Number(item.line_total))}</strong>
     </div>
   `).join('');
@@ -921,7 +932,7 @@ function lfTrackingResultHTML(order) {
       </div>
 
       <div class="lf-track-meta">
-        <div><span>Pago</span><strong>${payment}</strong></div>
+        <div><span>Pago</span><strong>${lfEscapeHtml(payment)}</strong></div>
         <div><span>Método</span><strong>${lfEscapeHtml(order.payment_method || '—')}</strong></div>
         ${carrier ? `<div><span>Transportadora</span><strong>${lfEscapeHtml(carrier)}</strong></div>` : ''}
         ${order.tracking_code ? `<div><span>Guía</span><strong>${lfEscapeHtml(order.tracking_code)}</strong></div>` : ''}
@@ -1023,17 +1034,17 @@ function lfMyOrderCard(order) {
     : '—';
   const items = (order.items || []).map(item => `
     <li>
-      <span>${item.name}${item.size ? ` · Talla ${item.size}` : ''} × ${item.qty}</span>
-      <strong>${lfMoney(item.price * item.qty)}</strong>
+      <span>${lfEscapeHtml(item.name)}${item.size ? ` · Talla ${lfEscapeHtml(item.size)}` : ''} × ${Number(item.qty)}</span>
+      <strong>${lfMoney(Number(item.price) * Number(item.qty))}</strong>
     </li>
   `).join('');
 
   return `
-    <article class="lf-myorder" data-myorder="${order.code}">
+    <article class="lf-myorder" data-myorder="${lfEscapeHtml(order.code)}">
       <div class="lf-myorder-head">
         <div>
           <span class="lf-track-label">Pedido</span>
-          <h3>${order.code}</h3>
+          <h3>${lfEscapeHtml(order.code)}</h3>
           <p>${date}</p>
         </div>
         <span class="lf-myorder-badge" data-myorder-status>${status.label}</span>
@@ -1064,7 +1075,7 @@ function lfApplyMyOrderStatus(card, data) {
     if (itemsHost) {
       itemsHost.innerHTML = data.items.map(item => `
         <li>
-          <span>${item.product_name}${item.size ? ` · Talla ${item.size}` : ''} × ${item.qty}</span>
+          <span>${lfEscapeHtml(item.product_name)}${item.size ? ` · Talla ${lfEscapeHtml(item.size)}` : ''} × ${Number(item.qty)}</span>
           <strong>${lfMoney(Number(item.line_total))}</strong>
         </li>
       `).join('');

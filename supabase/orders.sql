@@ -43,7 +43,7 @@ create table if not exists public.orders (
   customer_city text not null,
   payment_method text not null default '',
   payment_status text not null default 'pendiente'
-    check (payment_status in ('pendiente', 'comprobante_enviado', 'pagado', 'contra_entrega', 'reembolsado')),
+    check (payment_status in ('pendiente', 'link_enviado', 'comprobante_enviado', 'pagado', 'contra_entrega', 'reembolsado')),
   payment_proof_path text default '',
   payment_reference text default '',
   notes text default '',
@@ -386,7 +386,7 @@ as $$
 declare
   v_id bigint;
 begin
-  if coalesce(trim(p_path), '') = '' or p_path not like 'orders/%' then
+  if coalesce(trim(p_path), '') = '' or p_path not like ('orders/' || upper(trim(p_code)) || '/%') then
     raise exception 'Ruta de comprobante inválida';
   end if;
 
@@ -395,6 +395,7 @@ begin
       payment_reference = coalesce(nullif(trim(p_reference), ''), payment_reference),
       payment_status = 'comprobante_enviado'
   where upper(code) = upper(trim(p_code))
+    and payment_status not in ('pagado', 'reembolsado')
   returning id into v_id;
 
   return v_id is not null;
