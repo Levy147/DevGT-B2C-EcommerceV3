@@ -704,6 +704,11 @@
   color: var(--primary-dark, #b83d6d);
   transform: translateY(-1px);
 }
+.lf-size-choice.active {
+  border-color: var(--primary, #f7a8c4);
+  background: var(--primary-light, #fff0f5);
+  color: var(--primary-dark, #b83d6d);
+}
 .lf-size-modal-note { margin: 16px 0 0; font-size: .8rem; color: #9a7b87; }
 .lf-eyebrow { font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; color: #b98aa0; }
 

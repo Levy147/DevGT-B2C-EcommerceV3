@@ -24,6 +24,9 @@ alter table public.orders
   add constraint orders_payment_status_check
   check (payment_status in ('pendiente', 'link_enviado', 'comprobante_enviado', 'pagado', 'contra_entrega', 'reembolsado'));
 
+alter table public.order_items
+  add column if not exists color text default '';
+
 -- ------------------------------------------------------------
 -- 1.1 Datos de la guía del courier local (Forza, CPS, etc.)
 -- ------------------------------------------------------------
@@ -123,6 +126,7 @@ declare
   v_product public.products%rowtype;
   v_qty int;
   v_size text;
+  v_color text;
   v_line_total numeric(10,2);
   v_items jsonb := '[]'::jsonb;
   v_count int := 0;
@@ -239,6 +243,18 @@ begin
       end if;
     end if;
 
+    v_color := coalesce(v_item->>'color', '');
+    if v_product.colors is not null and array_length(v_product.colors, 1) > 0 then
+      if coalesce(v_color, '') = '' then
+        v_color := v_product.colors[1];
+      end if;
+      if not (v_color = any(v_product.colors)) then
+        raise exception 'Color no disponible para %', v_product.name;
+      end if;
+    else
+      v_color := '';
+    end if;
+
     v_line_total := round(v_product.price * v_qty, 2);
     v_subtotal := v_subtotal + v_line_total;
     v_count := v_count + 1;
@@ -247,6 +263,7 @@ begin
       'product_id', v_product.id,
       'product_name', v_product.name,
       'size', v_size,
+      'color', v_color,
       'qty', v_qty,
       'unit_price', v_product.price,
       'line_total', v_line_total
@@ -311,11 +328,12 @@ begin
     raise;
   end;
 
-  insert into public.order_items (order_id, product_id, product_name, size, qty, unit_price, line_total)
+  insert into public.order_items (order_id, product_id, product_name, size, color, qty, unit_price, line_total)
   select v_order_id,
          (value->>'product_id')::bigint,
          value->>'product_name',
          value->>'size',
+         value->>'color',
          (value->>'qty')::int,
          (value->>'unit_price')::numeric,
          (value->>'line_total')::numeric
@@ -364,6 +382,7 @@ begin
   select coalesce(jsonb_agg(jsonb_build_object(
     'product_name', product_name,
     'size', size,
+    'color', color,
     'qty', qty,
     'unit_price', unit_price,
     'line_total', line_total

@@ -192,16 +192,10 @@ function lfBuildCatalogFilters() {
 
   const colorHost = document.getElementById('filterColores');
   if (colorHost) {
-    const colorMap = {
-      'Rosa': '#f9a8d4', 'Blanco': '#ffffff', 'Negro': '#27272a', 'Marfil': '#f5f0df',
-      'Lavanda': '#c4b5fd', 'Plateado': '#cbd5e1', 'Dorado': '#e6c56a', 'Cereza': '#be123c',
-      'Denim claro': '#93c5fd', 'Denim rosa': '#f9a8d4', 'Lila': '#d8b4fe', 'Magenta': '#db2777',
-      'Rosa pastel': '#fbcfe8', 'Rosa metal': '#e879f9', 'Perla': '#f1f5f9', 'Rojo': '#dc2626'
-    };
     colorHost.innerHTML = LUNETTE_COLORS.map(color => `
       <button class="color-swatch ${lfCatalogState.color === color ? 'active' : ''}"
               data-color="${lfEscapeHtml(color)}" title="${lfEscapeHtml(color)}" aria-label="${lfEscapeHtml(color)}"
-              style="background:${colorMap[color] || '#f9a8d4'};"></button>
+              style="background:${lfColorHex(color)};"></button>
     `).join('');
   }
 
@@ -397,8 +391,16 @@ function lfRenderProductDetail() {
       <p class="product-description">${lfEscapeHtml(product.description)}</p>
 
       <div class="product-meta">
-        <span class="product-meta-item">✦ ${lfEscapeHtml(product.colors.join(' / '))}</span>
         <span class="product-meta-item">♡ ${lfEscapeHtml(product.sizes.join(' · '))}</span>
+      </div>
+
+      <div class="lf-option-label">Color <span id="lfColorLabel">${lfEscapeHtml(product.colors[0] || '')}</span></div>
+      <div class="color-swatches" id="lfColorRow">
+        ${product.colors.map((color, index) => `
+          <button class="color-swatch ${index === 0 ? 'active' : ''}" type="button"
+                  data-color="${lfEscapeHtml(color)}" title="${lfEscapeHtml(color)}" aria-label="${lfEscapeHtml(color)}"
+                  style="background:${lfColorHex(color)};"></button>
+        `).join('')}
       </div>
 
       <div class="lf-option-label">Talla <span>${product.sizes.length > 1 ? 'Elige la tuya' : 'Talla única'}</span></div>
@@ -450,6 +452,15 @@ function lfRenderProductDetail() {
     });
   });
 
+  document.querySelectorAll('#lfColorRow .color-swatch').forEach(button => {
+    button.addEventListener('click', () => {
+      document.querySelectorAll('#lfColorRow .color-swatch').forEach(btn => btn.classList.remove('active'));
+      button.classList.add('active');
+      const label = document.getElementById('lfColorLabel');
+      if (label) label.textContent = button.dataset.color;
+    });
+  });
+
   document.querySelectorAll('[data-lf-gallery]').forEach(button => {
     button.addEventListener('click', () => {
       const mainImageEl = document.getElementById('lfMainImage');
@@ -461,7 +472,8 @@ function lfRenderProductDetail() {
 
   document.getElementById('lfDetailAdd')?.addEventListener('click', () => {
     const size = document.querySelector('#lfSizeRow .lf-size-pill.active')?.dataset.size || product.sizes[0];
-    lfAddToCart(product.id, size, quantity);
+    const color = document.querySelector('#lfColorRow .color-swatch.active')?.dataset.color || product.colors[0] || '';
+    lfAddToCart(product.id, size, quantity, color);
   });
 
   document.getElementById('lfDetailFav')?.addEventListener('click', function () {
@@ -557,6 +569,14 @@ function lfRenderCartPage() {
                         ${product.sizes.map(size => `<option value="${lfEscapeHtml(size)}"${size === line.size ? ' selected' : ''}>${lfEscapeHtml(size)}</option>`).join('')}
                       </select>
                     </label>
+                    ${product.colors.length ? `
+                      <label class="lf-size-inline">
+                        <span>Color</span>
+                        <select data-lf-color="${lfEscapeHtml(line.key)}" aria-label="Cambiar color de ${lfEscapeHtml(product.name)}">
+                          ${product.colors.map(color => `<option value="${lfEscapeHtml(color)}"${color === line.color ? ' selected' : ''}>${lfEscapeHtml(color)}</option>`).join('')}
+                        </select>
+                      </label>
+                    ` : ''}
                     <span class="lf-sku">${lfEscapeHtml(product.sku)}</span>
                     <div class="lf-qty" style="margin-top:8px;">
                       <button type="button" data-lf-qty="-1" data-key="${lfEscapeHtml(line.key)}" aria-label="Quitar uno">−</button>
@@ -725,6 +745,7 @@ function lfRenderCartPage() {
         id: line.id,
         name: product ? product.name : 'Producto',
         size: line.size,
+        color: line.color || '',
         qty: line.qty,
         price: product ? product.price : 0
       };
@@ -754,6 +775,7 @@ function lfRenderCartPage() {
           items: cartItems.map(item => ({
             product_id: Number(item.id),
             size: item.size,
+            color: item.color || '',
             qty: Number(item.qty)
           }))
         }
@@ -908,7 +930,7 @@ function lfTrackingResultHTML(order) {
     : '—';
   const items = (order.items || []).map(item => `
     <div class="lf-track-item">
-      <span>${lfEscapeHtml(item.product_name)}${item.size ? ` · Talla ${lfEscapeHtml(item.size)}` : ''} × ${Number(item.qty)}</span>
+      <span>${lfEscapeHtml(item.product_name)}${item.size ? ` · Talla ${lfEscapeHtml(item.size)}` : ''}${item.color ? ` · Color ${lfEscapeHtml(item.color)}` : ''} × ${Number(item.qty)}</span>
       <strong>${lfMoney(Number(item.line_total))}</strong>
     </div>
   `).join('');
@@ -1034,7 +1056,7 @@ function lfMyOrderCard(order) {
     : '—';
   const items = (order.items || []).map(item => `
     <li>
-      <span>${lfEscapeHtml(item.name)}${item.size ? ` · Talla ${lfEscapeHtml(item.size)}` : ''} × ${Number(item.qty)}</span>
+      <span>${lfEscapeHtml(item.name)}${item.size ? ` · Talla ${lfEscapeHtml(item.size)}` : ''}${item.color ? ` · Color ${lfEscapeHtml(item.color)}` : ''} × ${Number(item.qty)}</span>
       <strong>${lfMoney(Number(item.price) * Number(item.qty))}</strong>
     </li>
   `).join('');
@@ -1075,7 +1097,7 @@ function lfApplyMyOrderStatus(card, data) {
     if (itemsHost) {
       itemsHost.innerHTML = data.items.map(item => `
         <li>
-          <span>${lfEscapeHtml(item.product_name)}${item.size ? ` · Talla ${lfEscapeHtml(item.size)}` : ''} × ${Number(item.qty)}</span>
+      <span>${lfEscapeHtml(item.product_name)}${item.size ? ` · Talla ${lfEscapeHtml(item.size)}` : ''}${item.color ? ` · Color ${lfEscapeHtml(item.color)}` : ''} × ${Number(item.qty)}</span>
           <strong>${lfMoney(Number(item.line_total))}</strong>
         </li>
       `).join('');

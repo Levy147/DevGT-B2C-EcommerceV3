@@ -270,6 +270,19 @@ function lunetteBadge(product) {
   return map[product.badge] || null;
 }
 
+const LF_COLOR_HEX = {
+  'Rosa': '#f9a8d4', 'Rosado': '#f8c8d8', 'Rosa pastel': '#fbcfe8', 'Rosa metal': '#e879f9',
+  'Denim rosa': '#f9a8d4', 'Blanco': '#ffffff', 'Marfil': '#f5f0df', 'Perla': '#f1f5f9',
+  'Negro': '#27272a', 'Lavanda': '#c4b5fd', 'Lila': '#d8b4fe', 'Magenta': '#db2777',
+  'Morado': '#8b5cf6', 'Plateado': '#cbd5e1', 'Dorado': '#e6c56a', 'Cereza': '#be123c',
+  'Rojo': '#dc2626', 'Denim claro': '#93c5fd', 'Azul': '#6a9bd2', 'Verde': '#4caf50',
+  'Beige': '#d6c3a5', 'Café': '#8b5e3c'
+};
+
+function lfColorHex(color) {
+  return LF_COLOR_HEX[String(color || '')] || '#e6c56a';
+}
+
 /* ─── Catálogo remoto (Supabase) ─── */
 
 let lunetteSupabaseClient = null;

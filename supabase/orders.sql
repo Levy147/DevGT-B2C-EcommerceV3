@@ -64,6 +64,7 @@ create table if not exists public.order_items (
   product_id bigint references public.products(id) on delete set null,
   product_name text not null,
   size text default '',
+  color text default '',
   qty int not null default 1,
   unit_price numeric(10,2) not null default 0,
   line_total numeric(10,2) not null default 0

@@ -489,12 +489,13 @@
           '<tr>' +
             '<td>' + escapeHtml(item.product_name) + '</td>' +
             '<td>' + escapeHtml(item.size || '—') + '</td>' +
+            '<td>' + escapeHtml(item.color || '—') + '</td>' +
             '<td>' + Number(item.qty || 0) + '</td>' +
             '<td>' + escapeHtml(money(item.unit_price)) + '</td>' +
             '<td>' + escapeHtml(money(item.line_total)) + '</td>' +
           '</tr>'
         ).join('')
-      : '<tr><td colspan="5" class="portal-muted">Sin productos registrados.</td></tr>';
+      : '<tr><td colspan="6" class="portal-muted">Sin productos registrados.</td></tr>';
 
     const eventRows = events.length
       ? events.map(event =>
@@ -569,7 +570,7 @@
         '<h3>Productos</h3>' +
         '<div class="portal-table-wrap">' +
           '<table class="portal-order-items">' +
-            '<thead><tr><th>Producto</th><th>Talla</th><th>Cant.</th><th>Precio</th><th>Total</th></tr></thead>' +
+            '<thead><tr><th>Producto</th><th>Talla</th><th>Color</th><th>Cant.</th><th>Precio</th><th>Total</th></tr></thead>' +
             '<tbody>' + itemRows + '</tbody>' +
           '</table>' +
         '</div>' +

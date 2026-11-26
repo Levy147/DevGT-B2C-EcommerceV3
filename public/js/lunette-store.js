@@ -27,7 +27,14 @@ function lfWrite(key, value) {
 }
 
 function lfCart() {
-  return lfRead(LF_CART_KEY, []);
+  const lines = lfRead(LF_CART_KEY, []);
+  if (!Array.isArray(lines)) return [];
+  return lines.map(line => {
+    const product = lunetteProductById(line.id);
+    const size = line.size || product?.sizes?.[0] || 'Única';
+    const color = line.color || product?.colors?.[0] || '';
+    return { ...line, size, color, key: lfCartKey(line.id, size, color) };
+  });
 }
 
 function lfSaveCart(cart) {
@@ -56,8 +63,8 @@ function lfSaveOrder(order) {
   lfWrite(LF_ORDERS_KEY, orders);
 }
 
-function lfCartKey(id, size) {
-  return String(id) + '::' + String(size || 'Única');
+function lfCartKey(id, size, color) {
+  return String(id) + '::' + String(size || 'Única') + '::' + String(color || '');
 }
 
 function lfCartCount() {
@@ -101,19 +108,20 @@ function lfToggleFavorite(id) {
   return true;
 }
 
-function lfAddToCart(id, size, qty) {
+function lfAddToCart(id, size, qty, color) {
   const product = lunetteProductById(id);
   if (!product) return;
   const chosenSize = size || product.sizes[0] || 'Única';
+  const chosenColor = color || product.colors[0] || '';
   const amount = Math.max(1, Number(qty) || 1);
-  const key = lfCartKey(product.id, chosenSize);
+  const key = lfCartKey(product.id, chosenSize, chosenColor);
   const cart = lfCart();
   const existing = cart.find(line => line.key === key);
 
   if (existing) {
     existing.qty += amount;
   } else {
-    cart.push({ key, id: product.id, size: chosenSize, qty: amount });
+    cart.push({ key, id: product.id, size: chosenSize, color: chosenColor, qty: amount });
   }
 
   lfSaveCart(cart);
@@ -133,37 +141,64 @@ function lfCloseSizePicker() {
   document.body.classList.remove('lf-no-scroll');
 }
 
-function lfOpenSizePicker(product, sizes, onSelect) {
+function lfOpenSizePicker(product, sizes, colors, onSelect) {
   lfCloseSizePicker();
+  const hasColors = colors.length > 1;
+  let selectedSize = sizes[0];
+  let selectedColor = colors[0] || '';
+  const variantLabel = () => `Talla ${selectedSize}${hasColors ? ' · Color ' + selectedColor : ''}`;
   const modal = document.createElement('div');
   modal.className = 'lf-size-modal';
   modal.id = 'lfSizeModal';
   modal.innerHTML = `
     <div class="lf-size-modal-overlay" data-size-close></div>
-    <div class="lf-size-modal-card" role="dialog" aria-modal="true" aria-label="Elegir talla">
+    <div class="lf-size-modal-card" role="dialog" aria-modal="true" aria-label="Elegir variante">
       <button class="lf-size-modal-close" type="button" data-size-close aria-label="Cerrar">×</button>
-      <span class="lf-eyebrow">Elige tu talla</span>
+      <span class="lf-eyebrow">Elige tu variante</span>
       <h3>${lfEscapeHtml(product.name)}</h3>
       <p class="lf-size-modal-price">${lfMoney(product.price)}</p>
       <div class="lf-size-grid">
-        ${sizes.map(size => `<button class="lf-size-choice" type="button" data-size-pick="${lfEscapeHtml(size)}">${lfEscapeHtml(size)}</button>`).join('')}
+        ${sizes.map(size => `<button class="lf-size-choice ${size === selectedSize ? 'active' : ''}" type="button" data-size-pick="${lfEscapeHtml(size)}">${lfEscapeHtml(size)}</button>`).join('')}
       </div>
-      <p class="lf-size-modal-note">La talla queda guardada en tu carrito.</p>
+      ${hasColors ? `
+        <div class="lf-option-label">Color <span data-color-label>${lfEscapeHtml(selectedColor)}</span></div>
+        <div class="color-swatches" data-color-row>
+          ${colors.map(color => `<button class="color-swatch ${color === selectedColor ? 'active' : ''}" type="button" data-color-pick="${lfEscapeHtml(color)}" title="${lfEscapeHtml(color)}" aria-label="${lfEscapeHtml(color)}" style="background:${lfColorHex(color)};"></button>`).join('')}
+        </div>
+      ` : ''}
+      <p class="lf-size-modal-note" data-variant-note>${variantLabel()}</p>
+      <button class="btn btn-primary btn-block" type="button" data-variant-add>Agregar al carrito</button>
     </div>
   `;
   document.body.appendChild(modal);
   document.body.classList.add('lf-no-scroll');
   window.requestAnimationFrame(() => modal.classList.add('open'));
 
+  const note = modal.querySelector('[data-variant-note]');
+  const updateNote = () => { if (note) note.textContent = variantLabel(); };
+
   modal.querySelectorAll('[data-size-close]').forEach(el => {
     el.addEventListener('click', lfCloseSizePicker);
   });
   modal.querySelectorAll('[data-size-pick]').forEach(button => {
     button.addEventListener('click', () => {
-      const size = button.dataset.sizePick;
-      lfCloseSizePicker();
-      onSelect(size);
+      selectedSize = button.dataset.sizePick;
+      modal.querySelectorAll('[data-size-pick]').forEach(btn => btn.classList.toggle('active', btn === button));
+      updateNote();
     });
+  });
+  modal.querySelectorAll('[data-color-pick]').forEach(button => {
+    button.addEventListener('click', () => {
+      selectedColor = button.dataset.colorPick;
+      modal.querySelectorAll('[data-color-pick]').forEach(btn => btn.classList.toggle('active', btn === button));
+      const label = modal.querySelector('[data-color-label]');
+      if (label) label.textContent = selectedColor;
+      updateNote();
+    });
+  });
+  modal.querySelector('[data-variant-add]')?.addEventListener('click', () => {
+    lfCloseSizePicker();
+    onSelect(selectedSize, selectedColor);
   });
 }
 
@@ -171,11 +206,12 @@ function lfQuickAdd(id) {
   const product = lunetteProductById(id);
   if (!product) return;
   const sizes = Array.isArray(product.sizes) && product.sizes.length ? product.sizes : ['Única'];
-  if (sizes.length === 1) {
-    lfAddToCart(product.id, sizes[0], 1);
+  const colors = Array.isArray(product.colors) && product.colors.length ? product.colors : [''];
+  if (sizes.length === 1 && colors.length === 1) {
+    lfAddToCart(product.id, sizes[0], 1, colors[0]);
     return;
   }
-  lfOpenSizePicker(product, sizes, size => lfAddToCart(product.id, size, 1));
+  lfOpenSizePicker(product, sizes, colors, (size, color) => lfAddToCart(product.id, size, 1, color));
 }
 
 function lfChangeLineSize(key, newSize) {
@@ -185,13 +221,32 @@ function lfChangeLineSize(key, newSize) {
   const product = lunetteProductById(line.id);
   if (!product || !Array.isArray(product.sizes) || !product.sizes.includes(newSize)) return;
   const oldIndex = cart.indexOf(line);
-  const targetKey = lfCartKey(line.id, newSize);
+  const targetKey = lfCartKey(line.id, newSize, line.color);
   const existing = cart.find(item => item.key === targetKey && item.key !== key);
   if (existing) {
     existing.qty += line.qty;
     cart.splice(oldIndex, 1);
   } else {
     line.size = newSize;
+    line.key = targetKey;
+  }
+  lfSaveCart(cart);
+}
+
+function lfChangeLineColor(key, newColor) {
+  const cart = lfCart();
+  const line = cart.find(item => item.key === key);
+  if (!line) return;
+  const product = lunetteProductById(line.id);
+  if (!product || !Array.isArray(product.colors) || !product.colors.includes(newColor)) return;
+  const oldIndex = cart.indexOf(line);
+  const targetKey = lfCartKey(line.id, line.size, newColor);
+  const existing = cart.find(item => item.key === targetKey && item.key !== key);
+  if (existing) {
+    existing.qty += line.qty;
+    cart.splice(oldIndex, 1);
+  } else {
+    line.color = newColor;
     line.key = targetKey;
   }
   lfSaveCart(cart);
@@ -432,7 +487,15 @@ function lfCartLine(line) {
       <img src="${lfSafeMediaUrl(image)}" alt="${lfEscapeHtml(product.name)}" loading="lazy" decoding="async" style="filter:hue-rotate(${Number(product.tint || 0)}deg);">
       <div class="lf-cart-line-info">
         <a href="${lfEscapeHtml(lunetteProductUrl(product))}">${lfEscapeHtml(product.name)}</a>
-        <span>Talla ${lfEscapeHtml(line.size)}</span>
+        <span class="lf-size-inline">Talla ${lfEscapeHtml(line.size)}</span>
+        ${product.colors.length ? `
+          <label class="lf-size-inline">
+            Color
+            <select data-lf-color="${lfEscapeHtml(line.key)}" aria-label="Cambiar color de ${lfEscapeHtml(product.name)}">
+              ${product.colors.map(color => `<option value="${lfEscapeHtml(color)}"${color === line.color ? ' selected' : ''}>${lfEscapeHtml(color)}</option>`).join('')}
+            </select>
+          </label>
+        ` : ''}
         <strong>${lfMoney(product.price)}</strong>
       </div>
       <div class="lf-cart-line-actions">
@@ -536,7 +599,7 @@ function lfOrderMessage(order) {
     '¡Hola Lunette! Quiero confirmar este pedido:',
     '',
     'Pedido: ' + order.code,
-    ...order.items.map(item => `• ${item.name} · Talla ${item.size} · x${item.qty} · ${lfMoney(item.price * item.qty)}`),
+    ...order.items.map(item => `• ${item.name} · Talla ${item.size}${item.color ? ' · Color ' + item.color : ''} · x${item.qty} · ${lfMoney(item.price * item.qty)}`),
     '',
     'Subtotal: ' + lfMoney(order.subtotal),
     'Envío: ' + (order.shipping ? lfMoney(order.shipping) : 'Gratis'),
@@ -656,6 +719,11 @@ document.addEventListener('click', event => {
 });
 
 document.addEventListener('change', event => {
+  const colorSelect = event.target.closest('[data-lf-color]');
+  if (colorSelect) {
+    lfChangeLineColor(colorSelect.dataset.lfColor, colorSelect.value);
+    return;
+  }
   const sizeSelect = event.target.closest('[data-lf-size]');
   if (!sizeSelect) return;
   lfChangeLineSize(sizeSelect.dataset.lfSize, sizeSelect.value);
