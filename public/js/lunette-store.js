@@ -421,7 +421,7 @@ function lfNavHTML() {
 function lfFooterHTML() {
   const contact = [];
   if (LUNETTE_STORE.city) contact.push(`<p>◎ ${lfEscapeHtml(LUNETTE_STORE.city)}, Guatemala</p>`);
-  if (LUNETTE_STORE.email) contact.push(`<p>✉ <a href="mailto:${encodeURIComponent(LUNETTE_STORE.email)}">${lfEscapeHtml(LUNETTE_STORE.email)}</a></p>`);
+  if (LUNETTE_STORE.email) contact.push(`<p>✉ <a href="mailto:${lfEscapeHtml(LUNETTE_STORE.email)}">${lfEscapeHtml(LUNETTE_STORE.email)}</a></p>`);
   const igUrl = lfSafeUrl(LUNETTE_STORE.instagramUrl);
   if (LUNETTE_STORE.instagram && igUrl) contact.push(`<p>♡ <a href="${lfEscapeHtml(igUrl)}" target="_blank" rel="noopener">${lfEscapeHtml(LUNETTE_STORE.instagram)}</a></p>`);
   if (LUNETTE_STORE.whatsapp) contact.push(`<p><a href="${lfEscapeHtml(lfWhatsAppUrl('¡Hola Lunette! Quiero información sobre sus productos 🎀'))}" target="_blank" rel="noopener">Escríbenos por WhatsApp</a></p>`);
