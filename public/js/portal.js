@@ -74,6 +74,23 @@
     return String(value || '').split(',').map(item => item.trim()).filter(Boolean);
   }
 
+  function parseColorHexes(value) {
+    const result = {};
+    splitLines(value).forEach(line => {
+      const match = line.match(/^\s*([^=:]+?)\s*(?:=|:)\s*(#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6})\s*$/);
+      if (match) result[match[1].trim()] = match[2].toLowerCase();
+    });
+    return result;
+  }
+
+  function formatColorHexes(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
+    return Object.entries(value)
+      .filter(([, hex]) => /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(String(hex || '')))
+      .map(([name, hex]) => name + '=' + hex)
+      .join('\n');
+  }
+
   function setBusy(busy) {
     state.busy = busy;
     document.body.style.cursor = busy ? 'progress' : '';
@@ -796,6 +813,7 @@
     els.fieldDetails.value = product && Array.isArray(product.details) ? product.details.join('\n') : '';
     els.fieldSizes.value = product && Array.isArray(product.sizes) ? product.sizes.join(', ') : '';
     els.fieldColors.value = product && Array.isArray(product.colors) ? product.colors.join(', ') : '';
+    els.fieldColorHexes.value = formatColorHexes(product && product.color_hexes);
     els.fieldActive.checked = product ? Boolean(product.active) : true;
     fillCategorySelects();
     els.fieldCategory.value = product && product.category_id ? String(product.category_id) : '';
@@ -1090,6 +1108,7 @@
       details: splitLines(els.fieldDetails.value),
       sizes: splitCommas(els.fieldSizes.value),
       colors: splitCommas(els.fieldColors.value),
+      color_hexes: parseColorHexes(els.fieldColorHexes.value),
       active: els.fieldActive.checked
     };
 
@@ -1236,6 +1255,7 @@
         details: product.details,
         sizes: product.sizes,
         colors: product.colors,
+        color_hexes: {},
         image: product.image,
         images: product.images && product.images.length ? product.images : [product.image],
         tint: product.tint,
@@ -1505,6 +1525,7 @@
       fieldDetails: document.getElementById('fieldDetails'),
       fieldSizes: document.getElementById('fieldSizes'),
       fieldColors: document.getElementById('fieldColors'),
+      fieldColorHexes: document.getElementById('fieldColorHexes'),
       fieldActive: document.getElementById('fieldActive'),
       imagePreview: document.getElementById('imagePreview'),
       fieldUploads: document.getElementById('fieldUploads'),

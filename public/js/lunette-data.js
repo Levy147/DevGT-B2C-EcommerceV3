@@ -276,11 +276,16 @@ const LF_COLOR_HEX = {
   'Negro': '#27272a', 'Lavanda': '#c4b5fd', 'Lila': '#d8b4fe', 'Magenta': '#db2777',
   'Morado': '#8b5cf6', 'Plateado': '#cbd5e1', 'Dorado': '#e6c56a', 'Cereza': '#be123c',
   'Rojo': '#dc2626', 'Denim claro': '#93c5fd', 'Azul': '#6a9bd2', 'Verde': '#4caf50',
-  'Beige': '#d6c3a5', 'Café': '#8b5e3c'
+  'Beige': '#d6c3a5', 'Café': '#8b5e3c', 'Celeste': '#a5d8f3', 'Turquesa': '#40c4b4',
+  'Gris': '#9ca3af', 'Gris claro': '#d1d5db', 'Naranja': '#fb923c', 'Amarillo': '#fde047',
+  'Mostaza': '#d4a017', 'Coral': '#ff7f7f', 'Único': '#e5e7eb', 'Única': '#e5e7eb'
 };
 
-function lfColorHex(color) {
-  return LF_COLOR_HEX[String(color || '')] || '#e6c56a';
+function lfColorHex(color, colorMap) {
+  const custom = colorMap ? colorMap[color] : null;
+  const customHex = String(custom || '').trim();
+  if (/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(customHex)) return customHex;
+  return LF_COLOR_HEX[String(color || '')] || '#e9dff0';
 }
 
 /* ─── Catálogo remoto (Supabase) ─── */
@@ -341,6 +346,9 @@ async function lfLoadRemoteCatalog() {
       if (product.image) imageList.unshift(lfImageUrl(product.image));
       const images = [...new Set(imageList.filter(Boolean))];
       const image = images[0] || fallbackImage;
+      const colorHexes = product.color_hexes && typeof product.color_hexes === 'object' && !Array.isArray(product.color_hexes)
+        ? product.color_hexes
+        : {};
 
       return {
         id: product.id,
@@ -356,7 +364,8 @@ async function lfLoadRemoteCatalog() {
         images: images.length ? images : (fallbackImage ? [fallbackImage] : []),
         tint: Number(product.tint || 0),
         sizes: Array.isArray(product.sizes) && product.sizes.length ? product.sizes : ['Única'],
-        colors: Array.isArray(product.colors) && product.colors.length ? product.colors : ['Único'],
+        colors: Array.isArray(product.colors) ? product.colors : [],
+        colorHexes: colorHexes,
         description: product.description || '',
         details: Array.isArray(product.details) ? product.details : []
       };

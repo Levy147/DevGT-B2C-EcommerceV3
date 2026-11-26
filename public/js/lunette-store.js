@@ -163,7 +163,7 @@ function lfOpenSizePicker(product, sizes, colors, onSelect) {
       ${hasColors ? `
         <div class="lf-option-label">Color <span data-color-label>${lfEscapeHtml(selectedColor)}</span></div>
         <div class="color-swatches" data-color-row>
-          ${colors.map(color => `<button class="color-swatch ${color === selectedColor ? 'active' : ''}" type="button" data-color-pick="${lfEscapeHtml(color)}" title="${lfEscapeHtml(color)}" aria-label="${lfEscapeHtml(color)}" style="background:${lfColorHex(color)};"></button>`).join('')}
+          ${colors.map(color => `<button class="color-swatch ${color === selectedColor ? 'active' : ''}" type="button" data-color-pick="${lfEscapeHtml(color)}" title="${lfEscapeHtml(color)}" aria-label="${lfEscapeHtml(color)}" style="background:${lfColorHex(color, product.colorHexes)};"></button>`).join('')}
         </div>
       ` : ''}
       <p class="lf-size-modal-note" data-variant-note>${variantLabel()}</p>

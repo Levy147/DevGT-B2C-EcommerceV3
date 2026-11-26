@@ -33,6 +33,7 @@ create table if not exists public.products (
   details jsonb default '[]'::jsonb,
   sizes text[] default '{}',
   colors text[] default '{}',
+  color_hexes jsonb default '{}'::jsonb,
   image text default '',
   images jsonb default '[]'::jsonb,
   tint int default 0,

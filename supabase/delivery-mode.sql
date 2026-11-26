@@ -24,6 +24,9 @@ alter table public.orders
   add constraint orders_payment_status_check
   check (payment_status in ('pendiente', 'link_enviado', 'comprobante_enviado', 'pagado', 'contra_entrega', 'reembolsado'));
 
+alter table public.products
+  add column if not exists color_hexes jsonb default '{}'::jsonb;
+
 alter table public.order_items
   add column if not exists color text default '';
 

@@ -192,10 +192,11 @@ function lfBuildCatalogFilters() {
 
   const colorHost = document.getElementById('filterColores');
   if (colorHost) {
+    const catalogColorHexes = Object.assign({}, ...LUNETTE_PRODUCTS.map(product => product.colorHexes || {}));
     colorHost.innerHTML = LUNETTE_COLORS.map(color => `
       <button class="color-swatch ${lfCatalogState.color === color ? 'active' : ''}"
               data-color="${lfEscapeHtml(color)}" title="${lfEscapeHtml(color)}" aria-label="${lfEscapeHtml(color)}"
-              style="background:${lfColorHex(color)};"></button>
+              style="background:${lfColorHex(color, catalogColorHexes)};"></button>
     `).join('');
   }
 
@@ -394,14 +395,16 @@ function lfRenderProductDetail() {
         <span class="product-meta-item">♡ ${lfEscapeHtml(product.sizes.join(' · '))}</span>
       </div>
 
-      <div class="lf-option-label">Color <span id="lfColorLabel">${lfEscapeHtml(product.colors[0] || '')}</span></div>
-      <div class="color-swatches" id="lfColorRow">
-        ${product.colors.map((color, index) => `
-          <button class="color-swatch ${index === 0 ? 'active' : ''}" type="button"
-                  data-color="${lfEscapeHtml(color)}" title="${lfEscapeHtml(color)}" aria-label="${lfEscapeHtml(color)}"
-                  style="background:${lfColorHex(color)};"></button>
-        `).join('')}
-      </div>
+      ${product.colors.length ? `
+        <div class="lf-option-label">Color <span id="lfColorLabel">${lfEscapeHtml(product.colors[0] || '')}</span></div>
+        <div class="color-swatches" id="lfColorRow">
+          ${product.colors.map((color, index) => `
+            <button class="color-swatch ${index === 0 ? 'active' : ''}" type="button"
+                    data-color="${lfEscapeHtml(color)}" title="${lfEscapeHtml(color)}" aria-label="${lfEscapeHtml(color)}"
+                    style="background:${lfColorHex(color, product.colorHexes)};"></button>
+          `).join('')}
+        </div>
+      ` : ''}
 
       <div class="lf-option-label">Talla <span>${product.sizes.length > 1 ? 'Elige la tuya' : 'Talla única'}</span></div>
       <div class="lf-size-row" id="lfSizeRow">
